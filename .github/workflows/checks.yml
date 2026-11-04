@@ -1,0 +1,68 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Encoding — .ps1 needs UTF-8 BOM, all scripts need CRLF
+        shell: pwsh
+        run: |
+          # .ps1 *must* carry a BOM: PowerShell 5.1 otherwise reads Chinese text as ANSI.
+          # .cmd must NOT carry one: cmd.exe echoes the BOM bytes on the first line.
+          $bad = @()
+          Get-ChildItem -Recurse -Include *.ps1,*.cmd -File |
+            Where-Object { $_.FullName -notmatch '\\payload\\' } |
+            ForEach-Object {
+              $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+              $hasBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+              if ($_.Extension -eq '.ps1' -and -not $hasBom) { $bad += "$($_.Name): missing UTF-8 BOM" }
+              if ($_.Extension -eq '.cmd' -and $hasBom) { $bad += "$($_.Name): .cmd must not have a BOM" }
+              $text = [System.IO.File]::ReadAllText($_.FullName)
+              if ($text -match "(?<!\r)\n") { $bad += "$($_.Name): contains LF-only lines" }
+            }
+          if ($bad.Count -gt 0) { $bad | ForEach-Object { Write-Error $_ }; exit 1 }
+          Write-Host "encoding OK"
+
+      - name: Syntax — parse every PowerShell file
+        shell: powershell
+        run: |
+          $errors = 0
+          Get-ChildItem -Recurse -Include *.ps1 -File |
+            Where-Object { $_.FullName -notmatch '\\payload\\' } |
+            ForEach-Object {
+              $tokens = $null; $errs = $null
+              [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errs)
+              if ($errs.Count -gt 0) {
+                Write-Host "FAIL $($_.Name)"
+                $errs | ForEach-Object { Write-Host "  line $($_.Extent.StartLineNumber): $($_.Message)" }
+                $script:errors++
+              }
+            }
+          if ($errors -gt 0) { exit 1 }
+          Write-Host "all scripts parse"
+
+      - name: Engine self-tests (stubbed dsh, no network)
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File engine\_selftest\run-tests.ps1
+
+      - name: Build and validate the sample disc
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\New-Disc.ps1 -Persona examples\sample-persona -Out build\disc
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\Test-Disc.ps1 -Disc build\disc
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Studio web — syntax check
+        shell: pwsh
+        run: |
+          node --check studio\web\app.js
+          node --check studio\web\card-import.js

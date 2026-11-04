@@ -1,0 +1,7 @@
+{
+  "name": "Fake Persona",
+  "version": "1.0.0",
+  "author": "selftest",
+  "description": "仅用于 New-Disc.ps1 / Test-Disc.ps1 自测的假人设包，没有任何真实内容。",
+  "tags": ["selftest"]
+}

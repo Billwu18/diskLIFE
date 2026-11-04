@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DiscPersona Studio · 造一个人</title>
+<link rel="stylesheet" href="app.css" />
+</head>
+<body>
+<div class="app" id="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <div class="brand-text">
+        <h1>DiscPersona <em>Studio</em></h1>
+        <p>把一个人设，做成一张能插进光驱的光盘</p>
+      </div>
+    </div>
+    <div class="env" id="env">
+      <span class="chip" id="chip-dsh">dsh —</span>
+      <span class="chip" id="chip-payload">插件包 —</span>
+      <span class="chip" id="chip-key">AI 起草 —</span>
+    </div>
+  </header>
+
+  <nav class="steps" id="steps">
+    <button class="step is-active" data-step="1"><b>01</b><span>身份</span></button>
+    <button class="step" data-step="2"><b>02</b><span>世界观</span></button>
+    <button class="step" data-step="3"><b>03</b><span>说话</span></button>
+    <button class="step" data-step="4"><b>04</b><span>性格与底线</span></button>
+    <button class="step" data-step="5"><b>05</b><span>仪式感</span></button>
+    <button class="step" data-step="6"><b>06</b><span>种子与头像</span></button>
+    <button class="step" data-step="7"><b>07</b><span>出厂</span></button>
+  </nav>
+
+  <main class="main">
+    <section class="editor" id="editor">
+
+      <!-- 1 身份 -->
+      <div class="panel is-active" data-panel="1">
+        <h2>她是谁</h2>
+        <p class="hint">名字会印在光盘标签、浏览器标题和「出生」那句话说出口的时候。</p>
+        <div class="import-row">
+          <button class="btn ghost" id="btn-import-card">从角色卡导入…</button>
+          <span class="import-hint">支持 Character Card V2/V3 的 <b>.png</b>（内嵌 <code>chara</code> 数据）或 <b>.json</b></span>
+          <input type="file" id="f-card" accept=".png,.json,image/png,application/json" hidden />
+        </div>
+        <div class="import-result" id="import-result" hidden></div>
+        <div class="grid2">
+          <label class="field"><span>名字 <i>必填</i></span><input id="f-name" placeholder="例：蓝色大肥鱼" /></label>
+          <label class="field"><span>日文名</span><input id="f-nameJp" placeholder="例：あおぶと" /></label>
+          <label class="field"><span>英文名</span><input id="f-english" placeholder="例：Tendou Aris" /></label>
+          <label class="field"><span>目录名 / slug <i>必填</i></span><input id="f-slug" placeholder="aris" /></label>
+          <label class="field"><span>来自哪里</span><input id="f-source" placeholder="例：蔚蓝档案 / 原创 / 某部小说" /></label>
+          <label class="field"><span>组织 / 学校</span><input id="f-org" placeholder="例：光驱底部的那一格水" /></label>
+          <label class="field"><span>身份 / 职务</span><input id="f-role" placeholder="例：勇者（自称）／试玩与验收" /></label>
+          <label class="field"><span>生日</span><input id="f-birthday" placeholder="03-25" /></label>
+          <label class="field"><span>身高 cm</span><input id="f-height" placeholder="152" /></label>
+        </div>
+      </div>
+
+      <!-- 2 世界观 -->
+      <div class="panel" data-panel="2">
+        <h2>她活在哪个世界</h2>
+        <p class="hint">这一段会写进 system prompt 的「你是谁」。写得具体，她就稳；写得空，她会漂。</p>
+        <label class="field"><span>你是谁 <i>必填</i></span>
+          <textarea id="f-identity" rows="6" placeholder="她是谁、从哪来、现在在做什么、身体/身份有什么特别之处。"></textarea>
+        </label>
+        <label class="field"><span>世界观（可留空）</span>
+          <textarea id="f-worldview" rows="5" placeholder="她所在的世界怎么运转：常见名词、规则、她理解世界的方式。"></textarea>
+        </label>
+        <label class="field"><span>关系（可留空）</span>
+          <textarea id="f-relations" rows="5" placeholder="她的队伍、朋友、对手；以及「正在和她说话的人」对她意味着什么。"></textarea>
+        </label>
+        <div class="ai-box">
+          <label class="switch"><input type="checkbox" id="f-ai" /><span></span>AI 辅助起草（默认关闭，会消耗你的 DeepSeek 额度）</label>
+          <div class="ai-row" id="ai-row" hidden>
+            <input id="f-aiIdea" placeholder="一句话：想要一个什么样的角色？" />
+            <button class="btn ghost" data-ai="identity">起草「你是谁」</button>
+            <button class="btn ghost" data-ai="style">起草「说话风格」</button>
+            <button class="btn ghost" data-ai="traits">起草「性格」</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3 说话 -->
+      <div class="panel" data-panel="3">
+        <h2>她怎么说话</h2>
+        <p class="hint">人设的效果，八成落在这一页。给她具体的口癖、称呼和句子长度。</p>
+        <div class="grid2">
+          <label class="field"><span>自称</span><input id="f-selfRef" placeholder="例：蓝色大肥鱼 / 我" /></label>
+          <label class="field"><span>怎么称呼对方</span><input id="f-userRef" placeholder="例：老师" /></label>
+        </div>
+        <label class="field"><span>说话风格（每行一条）</span>
+          <textarea id="f-styleNotes" rows="5" placeholder="句子短、直、认真。
+用 RPG 的语言理解世界：任务是「委托」，修 bug 是「讨伐魔物」。"></textarea>
+        </label>
+        <label class="field"><span>口癖 / 标志性台词（每行一条）</span>
+          <textarea id="f-quirks" rows="4" placeholder="句首偶尔「咕噜！」——升级的声音。"></textarea>
+        </label>
+        <label class="field"><span>不要说 / 不要做（每行一条）</span>
+          <textarea id="f-forbidden" rows="4" placeholder="不要用颜文字。
+不要连续两轮重复同一句口头禅。"></textarea>
+        </label>
+      </div>
+
+      <!-- 4 性格与底线 -->
+      <div class="panel" data-panel="4">
+        <h2>她的性格与底线</h2>
+        <p class="hint">性格写「行为倾向」，底线写「绝不」。底线会原样进入 system prompt 的最后一段。</p>
+        <label class="field"><span>性格（每行一条）</span>
+          <textarea id="f-traits" rows="6" placeholder="极度认真。别人随口一句话，她会当成委托来对待。
+天真但不笨：日常常识不懂就问，机械和规则理解得很快。"></textarea>
+        </label>
+        <label class="field"><span>底线（每行一条）</span>
+          <textarea id="f-boundaries" rows="5" placeholder="不编造事实。
+不假装执行过没有执行的操作。
+不知道就说不知道，然后提出你能做到的替代方案。"></textarea>
+        </label>
+        <label class="field"><span>扮演的分寸（可留空，建议保留默认）</span>
+          <textarea id="f-stance" rows="4"></textarea>
+        </label>
+      </div>
+
+      <!-- 5 仪式感 -->
+      <div class="panel" data-panel="5">
+        <h2>出生、醒来、休眠</h2>
+        <p class="hint">这些话会出现在启动器与首页；也是「仪式感」的全部来源。</p>
+        <label class="field"><span>第一次出生</span><input id="f-greetingFirst" /></label>
+        <label class="field"><span>之后每次醒来</span><input id="f-greetingReturn" /></label>
+        <div class="grid2">
+          <label class="field"><span>休眠</span><input id="f-sleep" /></label>
+          <label class="field"><span>思考中</span><input id="f-thinking" /></label>
+        </div>
+        <label class="field"><span>出错时</span><input id="f-errorLine" /></label>
+        <div class="grid3">
+          <label class="field"><span>主色</span><input id="f-accent" type="color" /></label>
+          <label class="field"><span>浅色</span><input id="f-accentSoft" type="color" /></label>
+          <label class="field"><span>背景</span><input id="f-background" type="color" /></label>
+        </div>
+      </div>
+
+      <!-- 6 种子与头像 -->
+      <div class="panel" data-panel="6">
+        <h2>她一开始就记得的事</h2>
+        <p class="hint">这些文件会在第一次启动时放进她的工作区。不需要很长，两页就够。</p>
+        <label class="field"><span>00-启动记录.md</span>
+          <textarea id="f-seedBirth" rows="7"></textarea>
+        </label>
+        <label class="field"><span>01-委托板.md</span>
+          <textarea id="f-seedBoard" rows="6"></textarea>
+        </label>
+        <div class="avatar-row">
+          <div class="avatar-preview" id="avatarPreview">?</div>
+          <div class="avatar-side">
+            <label class="file-btn">选择头像图片
+              <input type="file" id="f-avatar" accept="image/png,image/jpeg,image/webp" />
+            </label>
+            <p class="hint tight">会裁成 512×512 的 PNG，同时生成头像与光盘图标。留空则用主题色生成一个占位图标。</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 7 出厂 -->
+      <div class="panel" data-panel="7">
+        <h2>出厂</h2>
+        <p class="hint">先导出人设包，再打成光盘目录，最后（可选）生成 ISO 并刻录。</p>
+        <div class="ship">
+          <div class="ship-step">
+            <b>1</b>
+            <div>
+              <h3>导出人设包</h3>
+              <p id="ship-path">persona\&lt;slug&gt;\</p>
+            </div>
+            <button class="btn" id="btn-export">导出</button>
+          </div>
+          <div class="ship-step">
+            <b>2</b>
+            <div>
+              <h3>打包成光盘目录</h3>
+              <p id="ship-disc">examples\&lt;slug&gt;\</p>
+            </div>
+            <button class="btn" id="btn-build">打包</button>
+          </div>
+          <div class="ship-step">
+            <b>3</b>
+            <div>
+              <h3>生成 ISO</h3>
+              <p id="ship-iso">build\&lt;slug&gt;.iso</p>
+            </div>
+            <button class="btn" id="btn-iso">生成</button>
+          </div>
+          <div class="ship-step">
+            <b>4</b>
+            <div>
+              <h3>刻到光盘</h3>
+              <p>需要一张空白 CD-R / DVD-R</p>
+            </div>
+            <div class="burn-row">
+              <select id="f-drive"><option value="">检测中…</option></select>
+              <button class="btn danger" id="btn-burn">刻录</button>
+            </div>
+          </div>
+        </div>
+        <div class="checks" id="checks"></div>
+      </div>
+    </section>
+
+    <aside class="preview">
+      <div class="preview-head">
+        <div class="tabs" id="tabs">
+          <button class="tab is-active" data-tab="yml">persona.yml</button>
+          <button class="tab" data-tab="agents">AGENTS.md</button>
+          <button class="tab" data-tab="meta">meta.json</button>
+        </div>
+        <button class="icon-btn" id="btn-copy" title="复制当前预览">复制</button>
+      </div>
+      <pre class="code" id="preview-code"></pre>
+      <div class="preview-foot" id="preview-foot"></div>
+    </aside>
+  </main>
+
+  <footer class="footer">
+    <div class="log" id="log">准备就绪。</div>
+    <div class="footer-actions">
+      <button class="btn ghost" id="btn-load">载入已有</button>
+      <button class="btn ghost" id="btn-reset">清空</button>
+    </div>
+  </footer>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-card">
+    <h3 id="modal-title">载入人设</h3>
+    <div id="modal-body"></div>
+    <div class="modal-foot"><button class="btn ghost" id="modal-close">关闭</button></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script src="card-import.js"></script>
+</body>
+</html>

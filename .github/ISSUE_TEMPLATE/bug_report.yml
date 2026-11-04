@@ -1,0 +1,73 @@
+name: Bug report
+description: Something failed — a launch error, a bad disc, a Studio misbehaviour.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Two things make debugging much faster:
+        the **error code** (E01–E10 for the launcher, B01–B08 for burning) and the **log file**
+        (`<房间>\logs\launch-*.log`).
+
+        Please remove credentials, tokens, URLs and personal paths before pasting logs.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you expect, and what actually happened?
+      placeholder: I plugged the disc, clicked "唤醒 蓝色大肥鱼", and the window closed without a message.
+    validations:
+      required: true
+
+  - type: input
+    id: code
+    attributes:
+      label: Error code (if any)
+      placeholder: E03 / B04 / none
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. powershell -File tools\New-Disc.ps1 -Persona examples\sample-persona -Out build\disc
+        2. powershell -File examples\sample-disc\engine\launch.ps1 -DiscRoot build\disc
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log excerpt (redacted)
+      render: text
+      description: The last ~40 lines of `logs\launch-*.log`. Remove tokens and paths you don't want public.
+
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      placeholder: Windows 11 23H2 / PowerShell 5.1 / dsh 0.2.1-rc.5 / DiscPersona commit abc1234
+    validations:
+      required: true
+
+  - type: dropdown
+    id: media
+    attributes:
+      label: Where did you run it from?
+      options:
+        - A mounted ISO
+        - A burned CD-R/CD-RW
+        - A plain folder (no disc)
+        - Studio
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed credentials, tokens and private paths from logs.
+          required: true
+        - label: I searched existing issues.
+          required: true

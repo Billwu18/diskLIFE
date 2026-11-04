@@ -1,0 +1,49 @@
+name: Feature request
+description: Suggest a capability, or a persona you want to make.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: the project's scope is deliberately narrow — *put a persona on a disc, on Windows,
+        offline, reliably*. Features that drift from that (DRM, accounts, cloud sync, non-Windows launch
+        path) are usually declined up front. See `README.md` → "What is not in this repository".
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the situation, not the solution.
+      placeholder: I want two personas to share one disc, and pick one at launch time.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea (optional)
+      description: If you have a design in mind, sketch it. Constraints are welcome.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Launcher / engine
+        - Packing and burning tools
+        - Studio (web UI)
+        - Persona format / lorebook
+        - Docs
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This does not require bypassing a DRM or protection measure.
+          required: true
+        - label: This does not require bundling third-party copyrighted characters or artwork.
+          required: true
