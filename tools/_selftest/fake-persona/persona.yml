@@ -1,10 +1,10 @@
-# 自测用假人设：只验证打包/校验链路，不参与任何真实对话。
+# Fake persona for the self-test: exercises the pack/check chain only, never a real conversation.
 name: Fake Persona
 version: 1.0.0
 
 system_prompt: |
-  你是 Fake Persona，一个只存在于打包自测里的假人设。
-  如果有人真的在读这段文字，请提醒他：这张盘是用假人设打的包。
+  You are Fake Persona, a stand-in that exists only inside the packaging self-test.
+  If a human ever reads this, tell them: this disc was packed with a fake persona.
 
 greeting: |
-  你好，我是自测用的假人设。
+  Hello. I am the fake persona used by the self-test.

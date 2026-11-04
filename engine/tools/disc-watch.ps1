@@ -1,21 +1,21 @@
 ﻿#requires -Version 5.1
 <#
-    DiscPersona · 光驱守望者 (disc-watch.ps1)
+    DiscPersona · disc watcher (disc-watch.ps1)
 
-    插盘即唤醒：常驻在托盘后面的一个小脚本，监听「新卷出现」事件，
-    一旦发现插进来的盘根上有 pad.bin + persona\persona.yml，就替用户双击 start.cmd。
+    Wake on insertion: a small background script that listens for "new volume" events.
+    When the disc root carries pad.bin + persona\persona.yml, it double-clicks start.cmd for you.
 
-    用法：
-      # 前台试跑（看日志，Ctrl+C 退出）
+    Usage:
+      # run in the foreground (see the log, Ctrl+C to quit)
       powershell -NoProfile -ExecutionPolicy Bypass -File disc-watch.ps1
 
-      # 只做一次检测（拿这张盘/这个目录试一下判断逻辑，不启动实例）
+      # single check (try the detection on this disc/directory, start nothing)
       powershell -File disc-watch.ps1 -TestDriveRoot "E:\disc-build\aris" -DryRun
 
-      # 装成登录自启（在 %APPDATA%\...\Startup 放一个快捷方式，无窗口）
+      # install as a logon autostart (a hidden shortcut in %APPDATA%\...\Startup)
       powershell -File disc-watch.ps1 -Install
 
-      # 卸载自启
+      # remove the autostart
       powershell -File disc-watch.ps1 -Uninstall
 #>
 [CmdletBinding()]
@@ -33,12 +33,12 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 $script:StateDir  = Join-Path $env:LOCALAPPDATA 'DiscPersona'
 $script:ScriptDst = Join-Path $script:StateDir 'disc-watch.ps1'
 $script:LogFile   = if ($LogPath) { $LogPath } else { Join-Path $script:StateDir 'disc-watch.log' }
-$script:StartupLnk = Join-Path ([Environment]::GetFolderPath('Startup')) 'DiscPersona 光驱守望者.lnk'
+$script:StartupLnk = Join-Path ([Environment]::GetFolderPath('Startup')) 'DiscPersona disc watcher.lnk'
 $script:LastDrive = ''
 $script:LastTick  = [datetime]::MinValue
 
 function Write-WatchLog {
-    param([string]$Message, [string]$Level = '信息')
+    param([string]$Message, [string]$Level = 'info')
     $line = '{0} [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message
     Write-Host $line
     try {
@@ -48,7 +48,7 @@ function Write-WatchLog {
     } catch { }
 }
 
-# 判断一个盘根是不是 DiscPersona 光盘
+# Is this root a DiscPersona disc?
 function Test-DiscPersonaRoot {
     param([string]$Root)
     if (-not $Root) { return $false }
@@ -58,7 +58,7 @@ function Test-DiscPersonaRoot {
     return ((Test-Path -LiteralPath $pad -PathType Leaf) -and (Test-Path -LiteralPath $per -PathType Leaf))
 }
 
-# 找到这张盘的启动入口：优先 start.cmd（和用户双击同一路径），否则 engine\launch.ps1
+# Entry point: prefer start.cmd (the same path the user would double-click), else engine\launch.ps1
 function Get-DiscLauncher {
     param([string]$Root)
     $root2 = $Root.TrimEnd('\')
@@ -73,35 +73,36 @@ function Invoke-DiscBoot {
     param([string]$Root, [switch]$NoBrowser)
 
     if (-not (Test-DiscPersonaRoot -Root $Root)) {
-        Write-WatchLog ("不是 DiscPersona 光盘，忽略：{0}" -f $Root) '忽略'
+        Write-WatchLog ("Not a DiscPersona disc, ignoring: {0}" -f $Root) 'skip'
         return
     }
 
     $now = Get-Date
     if ($script:LastDrive -eq $Root -and ($now - $script:LastTick).TotalSeconds -lt 15) {
-        Write-WatchLog ("同一张盘 15 秒内重复触发，跳过：{0}" -f $Root) '去重'
+        Write-WatchLog ("Same disc fired twice within 15s, skipping: {0}" -f $Root) 'dup'
         return
     }
 
     $launcher = Get-DiscLauncher -Root $Root
     if (-not $launcher) {
-        Write-WatchLog ("盘上没有 start.cmd 也没有 engine\launch.ps1：{0}" -f $Root) '错误'
+        Write-WatchLog ("No start.cmd and no engine\launch.ps1 on the disc: {0}" -f $Root) 'error'
         return
     }
 
     $root2 = $Root.TrimEnd('\')
-    Write-WatchLog ("发现光盘，开始唤醒：{0}（入口 {1}）" -f $root2, $launcher.Kind) '唤醒'
+    Write-WatchLog ("Disc inserted, waking up: {0} (entry: {1})" -f $root2, $launcher.Kind) 'wake'
 
     if ($DryRun) {
         $script:LastDrive = $Root
         $script:LastTick  = $now
-        Write-WatchLog '（-DryRun：只检测，不启动）' '演练'
+        Write-WatchLog '(-DryRun: detection only, nothing is started)' 'dry-run'
         return
     }
 
     try {
         if ($launcher.Kind -eq 'cmd') {
-            # 用 cmd 起，工作目录设成盘根；-NoBrowser 透传不了，所以这里按需直接调 launch.ps1
+            # start through cmd with the disc root as the working directory; -NoBrowser cannot be
+            # forwarded through start.cmd, so call launch.ps1 directly when it is needed
             if ($NoBrowser) {
                 $ps1 = Join-Path $root2 'engine\launch.ps1'
                 $argList = @('-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $ps1), '-DiscRoot', ('"{0}"' -f $root2), '-NoBrowser', '-NoWait')
@@ -114,12 +115,12 @@ function Invoke-DiscBoot {
             if ($NoBrowser) { $argList += '-NoBrowser' }
             Start-Process -FilePath 'powershell.exe' -ArgumentList $argList -WorkingDirectory $root2 -WindowStyle Minimized | Out-Null
         }
-        Write-WatchLog '已把启动器拉起来（它会在控制台里报告结果）。' '成功'
+        Write-WatchLog 'Launcher started (it reports the result in its own console).' 'ok'
         $script:LastDrive = $Root
         $script:LastTick  = Get-Date
     } catch {
-        Write-WatchLog ("拉起失败：{0}" -f $_.Exception.Message) '错误'
-        # 故意不写去重状态：拉起失败后 15 秒内再插一次，仍然可以重试
+        Write-WatchLog ("Failed to start the launcher: {0}" -f $_.Exception.Message) 'error'
+        # The dedup state is written only after a successful start, so a failed attempt can be retried
     }
 }
 
@@ -134,29 +135,29 @@ function Install-Watcher {
     $lnk.Arguments = $args
     $lnk.WorkingDirectory = $script:StateDir
     $lnk.WindowStyle = 7
-    $lnk.Description = '插入 DiscPersona 光盘时自动唤醒'
+    $lnk.Description = 'Wake the persona when a DiscPersona disc is inserted'
     $lnk.Save()
-    Write-WatchLog ("已装成登录自启：{0}" -f $script:StartupLnk) '安装'
-    Write-WatchLog '下次登录后生效；想立刻生效，就现在手动跑一次 disc-watch.ps1。' '安装'
+    Write-WatchLog ("Installed as a logon autostart: {0}" -f $script:StartupLnk) 'install'
+    Write-WatchLog 'Takes effect after the next sign-in; run disc-watch.ps1 once now if you want it immediately.' 'install'
     Write-Host ''
-    Write-Host '提示：守望者只在「插入光盘/新卷挂载」时动作；如果你插的是已识别过的盘' -ForegroundColor DarkGray
-    Write-Host '      而 Windows 没发事件，双击 start.cmd 仍然是最可靠的方式。' -ForegroundColor DarkGray
+    Write-Host 'Note: the watcher only reacts to a disc insertion / new volume. If Windows already knows the disc' -ForegroundColor DarkGray
+    Write-Host '      and sends no event, double-clicking start.cmd is still the most reliable route.' -ForegroundColor DarkGray
 }
 
 function Uninstall-Watcher {
     if (Test-Path -LiteralPath $script:StartupLnk) {
         Remove-Item -LiteralPath $script:StartupLnk -Force
-        Write-WatchLog '已移除登录自启。' '卸载'
+        Write-WatchLog 'Removed the logon autostart.' 'uninstall'
     } else {
-        Write-WatchLog '没有找到自启快捷方式，可能本来就没装。' '卸载'
+        Write-WatchLog 'No autostart shortcut found — it may never have been installed.' 'uninstall'
     }
 }
 
 function Start-Watching {
-    Write-WatchLog '光驱守望者已启动，等待插盘……（Ctrl+C 退出）' '就绪'
-    Write-WatchLog ("日志：{0}" -f $script:LogFile) '就绪'
+    Write-WatchLog 'Disc watcher started, waiting for a disc… (Ctrl+C to quit)' 'ready'
+    Write-WatchLog ("Log: {0}" -f $script:LogFile) 'ready'
 
-    # 先扫一遍已经挂着的盘，避免「脚本启动前盘就插着」这种情况
+    # Scan already-mounted drives first, so a disc inserted before the script started still counts
     foreach ($d in ([System.IO.DriveInfo]::GetDrives())) {
         try {
             if ($d.DriveType -eq [System.IO.DriveType]::CDRom -and $d.IsReady) {
@@ -165,7 +166,7 @@ function Start-Watching {
         } catch { }
     }
 
-    # Win32_VolumeChangeEvent：EventType 2 = 挂载/插入，3 = 卸载
+    # Win32_VolumeChangeEvent: EventType 2 = mounted/inserted, 3 = removed
     $query = "SELECT * FROM Win32_VolumeChangeEvent WHERE EventType = 2 OR EventType = 3"
     $watcher = $null
     $failCount = 0
@@ -175,11 +176,11 @@ function Start-Watching {
             try {
                 $watcher = New-Object System.Management.ManagementEventWatcher($query)
                 $watcher.Options.Timeout = [TimeSpan]::FromSeconds(30)
-                if ($failCount -gt 0) { Write-WatchLog '监听已重建，继续等插盘。' '就绪' }
+                if ($failCount -gt 0) { Write-WatchLog 'Listener rebuilt, still waiting for a disc.' 'ready' }
                 $failCount = 0
             } catch {
                 $failCount++
-                Write-WatchLog ("监听器创建失败（第 {0} 次，10 秒后重试）：{1}" -f $failCount, $_.Exception.Message) '错误'
+                Write-WatchLog ("Could not create the listener (attempt {0}, retrying in 10s): {1}" -f $failCount, $_.Exception.Message) 'error'
                 $watcher = $null
                 Start-Sleep -Seconds 10
                 continue
@@ -193,19 +194,19 @@ function Start-Watching {
             try { $evtType = [int]$evt.EventType } catch { }
 
             if ($evtType -eq 3) {
-                # 拔出：清掉去重状态，这样「拔了再插」能立刻再触发一次
+                # On removal, clear the dedup state so re-inserting fires again right away
                 if ($drive) {
                     $gone = $drive.TrimEnd("\")
-                    Write-WatchLog ("卷已卸载：{0}" -f $gone) '事件'
+                    Write-WatchLog ("Volume removed: {0}" -f $gone) 'event'
                     if ($script:LastDrive -eq $gone) { $script:LastDrive = $null }
                 }
                 continue
             }
 
-            Write-WatchLog ("新卷出现：{0}" -f $drive) '事件'
+            Write-WatchLog ("New volume: {0}" -f $drive) 'event'
             if ($drive) {
                 $root = $drive.TrimEnd("\")
-                # 给 Windows 一点时间让卷真正可读
+                # Give Windows a moment to make the volume readable
                 for ($i = 0; $i -lt 10; $i++) {
                     if (Test-Path -LiteralPath $root) { break }
                     Start-Sleep -Milliseconds 400
@@ -214,14 +215,14 @@ function Start-Watching {
             }
         } catch [System.Management.ManagementException] {
             $msg = [string]$_.Exception.Message
-            # 30 秒没有事件就会抛超时，这是正常的等待，不是故障
-            if ($msg -match 'timed out|Timed out|超时|timeout') { continue }
-            Write-WatchLog ("监听中断（3 秒后重建）：{0}" -f $msg) '警告'
+            # A 30-second timeout is the normal idle wait, not a failure
+            if ($msg -match 'timed out|Timed out|timeout') { continue }
+            Write-WatchLog ("Listener interrupted (rebuilding in 3s): {0}" -f $msg) 'warn'
             try { $watcher.Stop() } catch { }
             $watcher = $null
             Start-Sleep -Seconds 3
         } catch {
-            Write-WatchLog ("监听出错（3 秒后重建）：{0}" -f $_.Exception.Message) '警告'
+            Write-WatchLog ("Listener error (rebuilding in 3s): {0}" -f $_.Exception.Message) 'warn'
             try { $watcher.Stop() } catch { }
             $watcher = $null
             Start-Sleep -Seconds 3

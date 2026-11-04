@@ -1,20 +1,20 @@
-# tools/ —— 造盘流水线
+# tools/ - disc build pipeline
 
-五个脚本，只依赖 Windows PowerShell 5.1 自带命令（不装 Node、不装 npm 包）。
+Five scripts; they rely only on commands that ship with Windows PowerShell 5.1 (no Node, no npm packages).
 
 ```
-New-ProfilePayload.ps1  装插件 → 预打包 profile（可选，一次性）
-        ↓
-New-Disc.ps1            人设包 + 引擎 + 载荷 → 光盘目录树
-        ↓
-Test-Disc.ps1           静态校验（36 项）
-        ↓
-New-Iso.ps1             目录树 → ISO（ISO9660 + Joliet）
-        ↓
-Burn-Iso.ps1            ISO → 空白 CD-R
+New-ProfilePayload.ps1  install plugins -> pre-pack a profile (optional, one-off)
+        |
+New-Disc.ps1            persona pack + engine + payload -> disc tree
+        |
+Test-Disc.ps1           static check (36 items)
+        |
+New-Iso.ps1             disc tree -> ISO (ISO9660 + Joliet)
+        |
+Burn-Iso.ps1            ISO -> blank CD-R
 ```
 
-## 打包：`New-Disc.ps1`
+## Packing: `New-Disc.ps1`
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\New-Disc.ps1 `
@@ -22,91 +22,137 @@ powershell -ExecutionPolicy Bypass -File tools\New-Disc.ps1 `
   -Out D:\build\aris-disc
 ```
 
-- `-Persona`：Persona Pack 目录（含 meta.json / persona.yml / AGENTS.md / seed\...）
-- `-Out`：光盘目录树输出位置；已存在会被整体替换（先打 `<Out>.tmp`，成功再原子换掉旧目录）
-- `-ReusePad`：复用 `<Out>\pad.bin`，让重新打包出来的 discID 保持不变
+- `-Persona`: Persona Pack directory (holds meta.json / persona.yml / AGENTS.md / seed\...)
+- `-Out`: where the disc tree goes; an existing tree is replaced wholesale (written to `<Out>.tmp` first, then swapped in atomically)
+- `-ReusePad`: reuse `<Out>\pad.bin` so a rebuild keeps the same discID
 
-产物就是一张**数据光盘**的目录树，直接按「数据光盘」方式烧进 CD-R 即可：
+The result is the directory tree of a **data disc**, ready to be written to a CD-R as data:
 
 ```
 <Out>\
-  autorun.inf            label / action / icon（有 avatar.ico 用 ico，否则回退 avatar.png）
-  start.cmd              工作区 start.cmd 的原样副本
-  README.txt             给人看的说明（含 home 位置、错误码、别当启动盘烧）
-  pad.bin                512 字节；discID = 它的 SHA-256 前 16 位小写
-  engine\...             工作区 engine\ 的副本
-  persona\...            Persona Pack 的副本（meta.json 的 discID 会同步成这张盘的）
-  .discpersona\manifest.json   文件哈希清单（含 pad.bin 自身，文件按路径排序）
-  .discpersona\payload\        预装插件载荷（若 build\payload 存在）
+  autorun.inf           label / action / icon (avatar.ico when present, otherwise avatar.png)
+  start.cmd             verbatim copy of the workspace start.cmd
+  README.txt            notes for humans (home location, error codes, not a boot disc)
+  pad.bin               512 bytes; discID = first 16 lowercase hex chars of its SHA-256
+  engine\...            copy of the workspace engine\
+  persona\...           copy of the Persona Pack (meta.json discID is synced to this disc)
+  .discpersona\manifest.json   file hash manifest (pad.bin included, files sorted by path)
+  .discpersona\payload\        pre-installed plugin payload (when build\payload exists)
 ```
 
-校验不通过（meta 缺 name/version、yml 缺 `system_prompt:`）会列中文原因、退出码 1，
-且不产出半成品目录。
+A failed check (meta without name/version, yml without `system_prompt:`) prints the reasons,
+exits with code 1, and never leaves a half-written directory behind.
 
-## 静态校验：`Test-Disc.ps1`
+Example output:
+
+```
+DiscPersona builder
+  Persona     : E:\dshdocument\disklife\tools\_selftest\fake-persona
+  Out         : E:\dshdocument\disklife\build\en-check
+  ReusePad    : no
+  Workspace   : E:\dshdocument\disklife
+
+[1/7] Checking the persona pack
+  ✓ Persona pack is valid (name=Fake Persona, version=1.0.0)
+...
+[7/7] Hashing files and writing manifest.json
+  ✓ manifest.json written (112 files, including pad.bin; 113 files on the disc in total)
+
+------------------------------------------------------------
+DiscPersona disc created
+  Name        : Fake Persona
+  Version     : 1.0.0
+  discID      : cf76f969dc2c043c
+  Engine      : dev
+  Output      : E:\dshdocument\disklife\build\en-check
+  Files       : 113 (including pad.bin and manifest.json)
+  home        : %LOCALAPPDATA%\DiscPersona\personas\cf76f969dc2c043c
+  pad.bin     : newly generated
+------------------------------------------------------------
+
+DISC_OK discID=cf76f969dc2c043c files=113 out=E:\dshdocument\disklife\build\en-check
+```
+
+## Static check: `Test-Disc.ps1`
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\Test-Disc.ps1 -Disc D:\build\aris-disc
 ```
 
-不启动 DSH、不联网，只读盘上的文件：必需文件齐全、manifest 形状与缩进、
-每个哈希与磁盘一致、没有清单外的多余文件、pad.bin 恰好 512 字节且魔数正确、
-start.cmd 是 CRLF 无 BOM、autorun.inf 有 `open=start.cmd` 且 icon 指向真实文件。
-逐项 ✓/✗，末尾 `PASS`（退出码 0）或 `FAIL`（退出码 1）。
+Does not start DSH and does not use the network; it only reads files on the disc: required files
+present, manifest shape and indentation, every hash matching the disc, no extra files beyond the
+manifest, pad.bin exactly 512 bytes with the right magic, start.cmd CRLF without BOM, autorun.inf
+carrying `open=start.cmd` with an icon that points at a real file. Each item prints a green check or
+a red cross, and the run ends with `PASS` (exit code 0) or `FAIL` (exit code 1).
 
-## 自测
+```
+------------------------------------------------------------
+  Checks: 36    Passed: 36    Failed: 0
+  discID: cf76f969dc2c043c    Name: Fake Persona    Version: 1.0.0
+  pad.bin computes: cf76f969dc2c043c
+------------------------------------------------------------
 
-`_selftest\fake-persona\` 是最小假人设包；`_selftest\out-disc\` 是它的产物；
-`_selftest\out-disc-broken\` 是把 `persona/persona.yml` 追加一行后的副本，用来确认校验会 FAIL。
+PASS
+```
 
-## 插件载荷：`New-ProfilePayload.ps1`
+## Self-test
+
+`_selftest\fake-persona\` is a minimal fake persona pack; `_selftest\out-disc\` is its output;
+`_selftest\out-disc-broken\` is a copy with one extra line appended to `persona/persona.yml`, used to
+confirm that the check reports FAIL.
+
+## Plugin payload: `New-ProfilePayload.ps1`
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\New-ProfilePayload.ps1 -Force
 ```
 
-- `-Plugins`：要装的包，默认 `dsh-soul-md,dsh-persona-dafeiyu`
-- `-Out`：输出目录，默认 `build\payload\profile-web`
-- `-SkipVerify`：跳过「真启动一次」的验证（默认会验，慢十几秒但值得）
+- `-Plugins`: packages to install; defaults to `dsh-soul-md,dsh-persona-dafeiyu`
+- `-Out`: output directory; defaults to `build\payload\profile-web`
+- `-SkipVerify`: skip the "really start it once" verification (on by default; a dozen seconds slower but worth it)
 
-流程：建临时 home（`build\_payload-home`）→ `dsh plugin --profile web add ...` → 复制 `profiles\web` → 删
-`.cache` / `.pnpm-store` → 写 `payload.json` → 真启动一次确认没报错。产物约 0.5 MB / 69 文件。
+Flow: create a temporary home (`build\_payload-home`) -> `dsh plugin --profile web add ...` -> copy
+`profiles\web` -> delete `.cache` / `.pnpm-store` -> write `payload.json` -> start once to confirm it
+comes up. The artifact is roughly 0.5-0.6 MB in 70-90 files (the exact count follows the preset).
 
-失败了先看输出里的 `PAYLOAD_FAIL` 行：通常是插件 peerDependency 与当前 dsh 版本不匹配。
+If it fails, look at the `PAYLOAD_FAIL` line first: usually a plugin peerDependency does not match the
+current dsh version.
 
-## 生成 ISO：`New-Iso.ps1`
+## Building an ISO: `New-Iso.ps1`
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\New-Iso.ps1 -Source examples\demo-aris -Out build\aris.iso
 ```
 
-- `-Source`：光盘目录树（`New-Disc.ps1` 的产物）
-- `-VolumeLabel`：卷标，默认取 `meta.json.nameJp`，非 ASCII 时退回 `DISCPERSONA`
-- `-Force`：覆盖已存在的 ISO
+- `-Source`: the disc tree (output of `New-Disc.ps1`)
+- `-VolumeLabel`: volume label; defaults to `meta.json.nameJp`, falling back to `DISCPERSONA` when non-ASCII
+- `-Force`: overwrite an existing ISO
 
-走 IMAPI2（`MsftFileSystemImage`），`FileSystemsToCreate=3` 即 **ISO9660 + Joliet**——中文长文件名靠 Joliet 才不被截断。
-不需要 oscdimg / mkisofs / xorriso。
+Uses IMAPI2 (`MsftFileSystemImage`) with `FileSystemsToCreate=3`, i.e. **ISO9660 + Joliet** - Joliet is
+what keeps long non-ASCII file names from being truncated. No oscdimg / mkisofs / xorriso needed.
 
-## 刻录：`Burn-Iso.ps1`
+## Burning: `Burn-Iso.ps1`
 
 ```powershell
-powershell -File tools\Burn-Iso.ps1 -ListDrives                 # 看有哪些光驱、盘空不空
+powershell -File tools\Burn-Iso.ps1 -ListDrives                 # see the drives and whether the media is blank
 powershell -File tools\Burn-Iso.ps1 -IsoPath build\aris.iso -DriveLetter F
 ```
 
-- `-TestOnly`：只验链路，不真写（对已有内容的盘也能跑）
-- `-Eject`：写完弹出托盘
+- `-TestOnly`: check the link only, no actual write (works on a disc that already has content)
+- `-Eject`: eject the tray when done
 
-结局行固定为 `BURN_OK <盘> <字节> bytes <秒>s` 或 `BURN_FAIL <Bxx> <中文原因>`：
+The final line is always `BURN_OK <drive> <bytes> bytes <seconds>s` or `BURN_FAIL <Bxx> <reason>`:
 
-| 码 | 含义 |
+| Code | Meaning |
 | --- | --- |
-| B01 | 找不到光驱（`-DriveLetter` 写了不存在的盘符） |
-| B02 | 驱动器里没有介质 |
-| B03 | 介质不可写（DVD-RAM 以外的只读盘、或不是 CD-R/RW） |
-| B04 | 光盘上已经有内容（**保护**：不覆盖已刻的盘） |
-| B05 | ISO 文件不存在 |
-| B07 | 写入失败（COM 层报错，通常是驱动器或介质问题） |
-| B08 | 写完了但盘还是空白（极少见，多半是驱动器不认） |
+| B01 | Drive not found (`-DriveLetter` names a letter that does not exist) |
+| B02 | The drive cannot burn |
+| B03 | No media, or the media cannot be written (read-only disc, or not a CD-R/RW) |
+| B04 | The disc already has content (**protection**: never overwrites a burned disc) |
+| B05 | ISO file missing or empty |
+| B06 | Failed to load the file stream component / open the ISO |
+| B07 | Write failed (COM-level error; usually the drive or the media) |
+| B08 | Written, but the disc still looks blank (rare; usually the drive does not recognise it) |
 
-刻录会把盘**终结**（`ForceMediaToBeClosed`），之后不能再追加——一张盘一个人。
+Burning **closes** the disc (`ForceMediaToBeClosed`), so nothing can be appended afterwards - one disc,
+one persona.

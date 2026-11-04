@@ -1,23 +1,23 @@
 ﻿<#
 .SYNOPSIS
-    把打包好的光盘目录做成 ISO（ISO9660 + Joliet），给「上位机一键刻录」用。
+    Pack a prepared disc tree into an ISO (ISO9660 + Joliet) for the one-click burn tool.
 
 .DESCRIPTION
-    只用 Windows 自带的 IMAPI2（MsftFileSystemImage），不需要 oscdimg / mkisofs。
-    Joliet 保证中文长文件名不被截断——这点很关键：文件名被截断会让 manifest 里的
-    哈希全部对不上，启动器会报 E03。
+    Uses only the IMAPI2 (MsftFileSystemImage) that ships with Windows; no oscdimg / mkisofs.
+    Joliet keeps long Chinese file names from being truncated - that matters: truncated
+    names break every hash in the manifest, and the launcher then reports E03.
 
 .PARAMETER Source
-    光盘目录（New-Disc.ps1 的 -Out），例如 examples\demo-aris。
+    Disc tree (the -Out of New-Disc.ps1), e.g. examples\demo-aris.
 
 .PARAMETER Out
-    输出 ISO 路径，默认 build\<目录名>.iso。
+    Output ISO path; defaults to build\<dir name>.iso.
 
 .PARAMETER VolumeLabel
-    卷标，默认 ARIS_AL1S 之类的由 meta.json 推断；最长 32 字符。
+    Volume label; defaults to something like ARIS_AL1S inferred from meta.json; max 32 chars.
 
 .PARAMETER Force
-    输出已存在时覆盖。
+    Overwrite the output if it already exists.
 
 .EXAMPLE
     powershell -File tools\New-Iso.ps1 -Source examples\demo-aris -Out build\demo.iso
@@ -42,7 +42,7 @@ function Fail { param([string]$Code, [string]$Message)
 }
 
 if (-not [System.IO.Path]::IsPathRooted($Source)) { $Source = Join-Path $workspaceRoot $Source }
-if (-not (Test-Path -LiteralPath $Source -PathType Container)) { Fail 'I01' ('源目录不存在：' + $Source) }
+if (-not (Test-Path -LiteralPath $Source -PathType Container)) { Fail 'I01' ('Source directory not found: ' + $Source) }
 $Source = (Resolve-Path -LiteralPath $Source).Path
 
 if (-not $Out) {
@@ -51,13 +51,13 @@ if (-not $Out) {
     $Out = Join-Path $workspaceRoot $Out
 }
 if (Test-Path -LiteralPath $Out) {
-    if (-not $Force) { Fail 'I02' ('ISO 已存在：' + $Out + '（加 -Force 覆盖）') }
+    if (-not $Force) { Fail 'I02' ('ISO already exists: ' + $Out + ' (use -Force to overwrite)') }
     Remove-Item -LiteralPath $Out -Force
 }
 $outParent = Split-Path -Parent $Out
 if (-not (Test-Path -LiteralPath $outParent)) { New-Item -ItemType Directory -Force -Path $outParent | Out-Null }
 
-# 卷标：优先显式参数，其次 meta.json 的 name，最后 DISCPERSONA
+# Volume label: explicit parameter first, then meta.json name, then DISCPERSONA
 if (-not $VolumeLabel) {
     $VolumeLabel = 'DISCPERSONA'
     $metaPath = Join-Path $Source 'persona\meta.json'
@@ -69,17 +69,17 @@ if (-not $VolumeLabel) {
         } catch { }
     }
 }
-# ISO9660 卷标：ASCII 大写、<=32；非 ASCII 会被 IMAPI 拒绝，退回安全值
+# ISO9660 volume label: ASCII uppercase, <=32; IMAPI rejects non-ASCII, so fall back
 if ($VolumeLabel -notmatch '^[\x20-\x7E]+$') { $VolumeLabel = 'DISCPERSONA' }
 $VolumeLabel = $VolumeLabel.ToUpperInvariant()
 if ($VolumeLabel.Length -gt 32) { $VolumeLabel = $VolumeLabel.Substring(0, 32) }
 
-Write-Host ('==> 源：' + $Source) -ForegroundColor Cyan
-Write-Host ('==> 卷标：' + $VolumeLabel) -ForegroundColor Cyan
-Write-Host ('==> 输出：' + $Out) -ForegroundColor Cyan
+Write-Host ('==> Source: ' + $Source) -ForegroundColor Cyan
+Write-Host ('==> Label: ' + $VolumeLabel) -ForegroundColor Cyan
+Write-Host ('==> Output: ' + $Out) -ForegroundColor Cyan
 
-# IMAPI2 的 ImageStream 在 PowerShell 里不能直接 cast 成 IStream，
-# 必须把 RCW 当 object 传进 C# 再 QueryInterface。
+# IMAPI2's ImageStream cannot be cast to IStream directly from PowerShell;
+# the RCW must be passed to C# as object and then QueryInterface'd.
 $cs = @'
 using System;
 using System.IO;
@@ -124,20 +124,20 @@ if (-not ('DiscIsoStream' -as [type])) {
 
 $fsi = New-Object -ComObject IMAPI2FS.MsftFileSystemImage
 try {
-    $fsi.FileSystemsToCreate = 3          # 1=ISO9660, 2=Joliet -> 3 = 两者
+    $fsi.FileSystemsToCreate = 3          # 1=ISO9660, 2=Joliet -> 3 = both
     $fsi.VolumeName = $VolumeLabel
-    $fsi.Root.AddTree($Source, $false)    # false：不把源目录本身当成根下的一层
+    $fsi.Root.AddTree($Source, $false)    # false: do not add the source dir itself as a level under root
 
-    Write-Host '==> 构建镜像…' -ForegroundColor Cyan
+    Write-Host '==> Building the image…' -ForegroundColor Cyan
     $result = $fsi.CreateResultImage()
     $bytes = [DiscIsoStream]::Save($result.ImageStream, $Out)
 } finally {
     if ($fsi) { [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($fsi) }
 }
 
-if (-not (Test-Path -LiteralPath $Out)) { Fail 'I03' '镜像没有生成出来。' }
+if (-not (Test-Path -LiteralPath $Out)) { Fail 'I03' 'The image was not created.' }
 $size = (Get-Item -LiteralPath $Out).Length
-if ($size -lt 32768) { Fail 'I04' ('镜像太小（' + $size + ' 字节），多半是空的。') }
+if ($size -lt 32768) { Fail 'I04' ('Image too small (' + $size + ' bytes); it is probably empty.') }
 
 Write-Host ''
 Write-Host ('ISO_OK ' + $Out + ' ' + $size + ' bytes') -ForegroundColor Green

@@ -9,7 +9,7 @@ setlocal EnableExtensions
 set "DP_ROOT=%~dp0"
 set "DP_ROOT=%DP_ROOT:~0,-1%"
 set "DP_PS="
-rem 优先 Windows PowerShell 5.1：引擎用到 System.Web.Extensions（PS7 里没有）
+rem Prefer Windows PowerShell 5.1: the engine uses System.Web.Extensions (absent in PS7)
 where powershell.exe >nul 2>&1 && set "DP_PS=powershell.exe"
 if not defined DP_PS (
     where pwsh.exe >nul 2>&1 && set "DP_PS=pwsh.exe"

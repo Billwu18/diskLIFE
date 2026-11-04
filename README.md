@@ -103,8 +103,10 @@ language gets English. Two ways to override it:
 - the switch in the top-right corner of the Studio (the choice is remembered locally), or
 - `http://127.0.0.1:4791/?lang=en` / `?lang=zh` on the URL.
 
-Only the Studio is bilingual: the launcher, the packer and their messages are Chinese. Persona files you
-write are never translated — whatever you type is what the persona gets.
+The Studio is the only bilingual part. Everything outside it — the launcher, the packer, the ISO
+builder, the burner, the disc watcher — prints **English only**, and so do the logs under
+`logs\` and the room's `state.json` keys. Persona files you write are never translated: whatever you
+type is what the persona gets.
 
 ## Requirements
 

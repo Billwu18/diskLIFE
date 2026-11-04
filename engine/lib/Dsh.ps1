@@ -1,15 +1,15 @@
-﻿# DiscPersona 启动引擎 · dsh 进程管理
-# 负责：找 dsh、探测端口、拉起进程、等就绪 URL、单实例锁。
-# 复用 Common.ps1 里的 Test-DPProcessIdentity / Stop-DPProcessTree / Open-DPUrl。
+﻿# diskLIFE launch engine - dsh process management
+# Responsible for: finding dsh, probing ports, starting the process, waiting for the ready URL, the single-instance lock.
+# Reuses Test-DPProcessIdentity / Stop-DPProcessTree / Open-DPUrl from Common.ps1.
 
 $script:DPDshReadyRegex = 'http://127\.0\.0\.1:\d+/\?token=[^\s"''<>]+'
 
 function Resolve-DshExecutable {
     <#
-      查找 dsh 可执行文件。优先级：
-        -DshPath > DISCPERSONA_DSH > PATH 上的 dsh.cmd / dsh.exe / dsh.bat / dsh
-      返回全路径；找不到返回 $null。
-      注意：npm 全局装的 dsh 是 .cmd shim；PATH 上那个无扩展名的 `dsh` 是 bash 脚本，Windows 起不来。
+      Find the dsh executable. Priority:
+        -DshPath > DISCPERSONA_DSH > dsh.cmd / dsh.exe / dsh.bat / dsh on PATH
+      Returns the full path, or $null when nothing is found.
+      Note: a globally npm-installed dsh is a .cmd shim; the extension-less `dsh` on PATH is a bash script that Windows cannot start.
     #>
     param([string]$Explicit)
 
@@ -41,7 +41,7 @@ function Resolve-DshExecutable {
 
 function Test-DPPortListening {
     <#
-      用 TcpClient 探测本机某端口是否已被监听（不依赖 netstat，避免本地化输出差异）。
+      Use TcpClient to probe whether a local port is already listening (no netstat, so localized output cannot differ).
     #>
     param([int]$Port)
     if ($Port -le 0 -or $Port -gt 65535) { return $false }
@@ -60,7 +60,7 @@ function Test-DPPortListening {
 
 function Get-DPFreePortHint {
     <#
-      返回一个「大概率可用」的端口，仅供日志展示；实际仍以 --port 0 让 dsh 自己分配为准。
+      Return a "probably free" port for logging only; the real port still comes from --port 0, which lets dsh pick one.
     #>
     $listener = $null
     try {
@@ -76,9 +76,9 @@ function Get-DPFreePortHint {
 
 function Start-DshInstance {
     <#
-      以 DSH_HOME = $HomeDir、工作目录 = $WorkingDir 拉起 dsh web。
-      stdout/stderr 重定向到文件（PS 5.1 的 Start-Process 不能直接重定向到文件，所以套一层 cmd /d /s /c）。
-      返回 @{ Process = <包装进程 cmd.exe>; CommandLine = '...' ; Stdout; Stderr }
+      Start dsh web with DSH_HOME = $HomeDir and working directory = $WorkingDir.
+      Redirect stdout/stderr to files (PS 5.1 Start-Process cannot redirect to a file, so this wraps cmd /d /s /c).
+      Returns @{ Process = <the wrapper cmd.exe>; CommandLine = '...' ; Stdout; Stderr }
     #>
     param(
         [Parameter(Mandatory = $true)][string]$DshPath,
@@ -100,7 +100,7 @@ function Start-DshInstance {
     [void]$parts.Add('--no-open')
     $argString = ($parts -join ' ')
 
-    # cmd 的单行语法：/d /s /c ""<exe>" <args> > "<out>" 2> "<err>""（外层一对引号被 /s 剥掉）
+    # cmd one-line syntax: /d /s /c ""<exe>" <args> > "<out>" 2> "<err>"" (the outer pair of quotes is stripped by /s)
     $cmdLine = '/d /s /c ""' + $DshPath + '" ' + $argString + ' > "' + $StdoutPath + '" 2> "' + $StderrPath + '""'
 
     $savedHome = $env:DSH_HOME
@@ -121,7 +121,7 @@ function Start-DshInstance {
 
 function Read-DPSharedText {
     <#
-      读一个正被别的进程写入的文件（cmd 的 > 重定向只给写句柄，普通读会撞共享冲突）。
+      Read a file another process is writing (cmd's > redirect grants only a write handle, so a normal read hits a sharing violation).
     #>
     param([Parameter(Mandatory = $true)][string]$Path)
     $fs = $null
@@ -141,8 +141,8 @@ function Read-DPSharedText {
 
 function Wait-DshUrl {
     <#
-      轮询 stdout 日志里的就绪行，返回 URL；进程提前退出或超时返回 $null。
-      同时把进程是否已退出告诉调用方（Exited / ExitCode）。
+      Poll the stdout log for the ready line and return the URL; $null if the process exits early or the wait times out.
+      Also tells the caller whether the process has exited (Exited / ExitCode).
     #>
     param(
         [Parameter(Mandatory = $true)]$Instance,
@@ -164,14 +164,14 @@ function Wait-DshUrl {
         if ($proc -and $proc.HasExited) {
             $exited = $true
             try { $exitCode = $proc.ExitCode } catch { }
-            # 再读一次，避免「刚打印就退出」被漏掉
+            # Read once more so a "printed then exited" case is not missed
             if (Test-Path -LiteralPath $Instance.Stdout) {
                 $text = Read-DPSharedText -Path $Instance.Stdout
                 $m = [regex]::Match($text, $script:DPDshReadyRegex)
                 if ($m.Success) { $url = $m.Value }
             }
             if ($url) { break }
-            # 进程已经退了、也没有就绪地址：再等下去没有意义
+            # The process has exited and there is no ready URL: waiting longer is pointless
             break
         }
         Start-Sleep -Milliseconds 250
@@ -186,7 +186,7 @@ function Wait-DshUrl {
 
 function Read-DPLock {
     <#
-      读 home\.lock（JSON）。损坏/不存在返回 $null。
+      Read home\.lock (JSON). Returns $null when missing or corrupt.
     #>
     param([Parameter(Mandatory = $true)][string]$Path)
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
@@ -229,8 +229,8 @@ function Get-DPProcessStartTicks {
 
 function Test-DPIsUsableInstallRoot {
     <#
-      判断一个目录能不能当"dsh 装在哪"的锚点：
-      排除系统目录、用户 AppData、Program Files（这些位置放房间不合适），并要求可写。
+      Tell whether a directory can anchor "where dsh is installed":
+      Exclude system directories, user AppData and Program Files (unsuitable for a room), and require write access.
     #>
     param([string]$Path)
     if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
@@ -253,14 +253,14 @@ function Test-DPIsUsableInstallRoot {
 
 function Get-DPInstallRootFromDsh {
     <#
-      推断"dsh 安装在哪"，作为人格房间的默认落点（用户要求：原本 dsh 装在哪就保存在哪）。
+      Infer "where dsh is installed" as the default location for persona rooms (keep the room where dsh itself lives).
 
-        1. 找到 dsh 可执行文件（-DshPath / DISCPERSONA_DSH / PATH）。
-        2. 如果它所在目录名叫 npm-global / node_modules / .bin / npm，
-           说明这是包管理器目录，往上退一级当作安装根。
-        3. 该目录必须是"合适的根"（非系统/AppData/Program Files，且可写）。
+        1. Find the dsh executable (-DshPath / DISCPERSONA_DSH / PATH).
+        2. If its directory is named npm-global / node_modules / .bin / npm,
+           it is a package-manager directory, so go one level up and use that as the install root.
+        3. That directory must be a "suitable root" (not system/AppData/Program Files, and writable).
 
-      找不到或不合格返回 $null，调用方退回 %LOCALAPPDATA%。
+      Returns $null when nothing suitable is found, and the caller falls back to %LOCALAPPDATA%.
     #>
     param([string]$DshPath)
 

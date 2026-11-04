@@ -1,14 +1,14 @@
-﻿# DiscPersona 启动引擎 · 光盘完整性（manifest 校验）
-# 规范形状（packer 产出）：
+﻿# diskLIFE launch engine - disc integrity (manifest check)
+# Canonical shape (produced by the packer):
 #   { "format": 1, "discID": "....", "files": { "persona/persona.yml": "<sha256>" } }
-# 为兼容其它打包器，同时接受：
+# For compatibility with other packers, this is accepted too:
 #   { "files": [ { "path": "...", "sha256": "..." } ] }
-#   { "entries": [ ... ] } / 顶层数组 / 值写成 { "sha256": "..." }
+#   { "entries": [ ... ] } / top-level array / values written as { "sha256": "..." }
 
 function Get-DPManifestEntries {
     <#
-      把 manifest 归一到 @( @{ Path = '...'; Hash = '...' } )。
-      解析失败返回 $null（调用方决定是警告还是报错）。
+      Normalize the manifest to @( @{ Path = '...'; Hash = '...' } ).
+      Returns $null on a parse failure (the caller decides between a warning and an error).
     #>
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -67,7 +67,7 @@ function Get-DPManifestEntries {
                 & $addEntry $rel $hash
             }
         } else {
-            # 映射形状：{ "rel/path": "hash" }
+            # Mapping shape: { "rel/path": "hash" }
             foreach ($prop in $collection.PSObject.Properties) {
                 & $addEntry $prop.Name $prop.Value
             }
@@ -79,8 +79,8 @@ function Get-DPManifestEntries {
 
 function Assert-DPDiscManifest {
     <#
-      逐文件比对 SHA-256。任何失配/缺失 -> E03（带相对路径）。
-      返回 @{ Checked = n }；manifest 不存在时不调用本函数（调用方只警告）。
+      Compare SHA-256 file by file. Any mismatch/missing file -> E03 (with the relative path).
+      Returns @{ Checked = n }; not called when the manifest is absent (the caller only warns).
     #>
     param(
         [Parameter(Mandatory = $true)][string]$DiscRoot,
@@ -90,11 +90,11 @@ function Assert-DPDiscManifest {
     $entries = Get-DPManifestEntries -Path $ManifestPath
     if ($null -eq $entries) {
         Stop-DiscPersona -Code 'E03' `
-            -Message '这张光盘的校验清单（.discpersona\manifest.json）读不出来，无法确认文件是否完整。' `
-            -Hint '请换一张光盘，或用 tools\New-Disc.ps1 重新制作一张。'
+            -Message 'Cannot read the check manifest of this disc (.discpersona\manifest.json), so file integrity cannot be confirmed.' `
+            -Hint 'Use another disc, or rebuild one with tools\New-Disc.ps1.'
     }
     if ($entries.Count -eq 0) {
-        Add-DPLog -Message '校验清单里没有任何文件条目，跳过逐文件校验。' -Level '警告'
+        Add-DPLog -Message 'The check manifest has no file entries; skipping the per-file check.' -Level 'Warn'
         return [pscustomobject]@{ Checked = 0 }
     }
 
@@ -103,30 +103,30 @@ function Assert-DPDiscManifest {
         $rel = $entry.Path -replace '/', '\'
         if ($rel -match '(^|\\)\.\.(\\|$)') {
             Stop-DiscPersona -Code 'E03' `
-                -Message ('这张光盘的文件被改动过：' + $entry.Path + '（清单里出现了越界路径）') `
-                -Hint '请换一张光盘，或用 tools\New-Disc.ps1 重新制作一张。'
+                -Message ('Files on this disc were modified: ' + $entry.Path + ' (path escapes the manifest root)') `
+                -Hint 'Use another disc, or rebuild one with tools\New-Disc.ps1.'
         }
         $full = Join-Path $DiscRoot $rel
         if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
             Stop-DiscPersona -Code 'E03' `
-                -Message ('这张光盘的文件被改动过：' + $entry.Path + '（文件不见了）') `
-                -Hint '请换一张光盘，或用 tools\New-Disc.ps1 重新制作一张。'
+                -Message ('Files on this disc were modified: ' + $entry.Path + ' (file is missing)') `
+                -Hint 'Use another disc, or rebuild one with tools\New-Disc.ps1.'
         }
         $actual = $null
         try {
             $actual = Get-DPFileSha256 -Path $full
         } catch {
             Stop-DiscPersona -Code 'E03' `
-                -Message ('这张光盘的文件被改动过：' + $entry.Path + '（读不出来，可能已经损坏）') `
-                -Hint '请换一张光盘，或用 tools\New-Disc.ps1 重新制作一张。'
+                -Message ('Files on this disc were modified: ' + $entry.Path + ' (cannot be read; it may be damaged)') `
+                -Hint 'Use another disc, or rebuild one with tools\New-Disc.ps1.'
         }
         if ($actual -ne $entry.Hash) {
             Stop-DiscPersona -Code 'E03' `
-                -Message ('这张光盘的文件被改动过：' + $entry.Path) `
-                -Hint '请换一张光盘，或用 tools\New-Disc.ps1 重新制作一张。'
+                -Message ('Files on this disc were modified: ' + $entry.Path) `
+                -Hint 'Use another disc, or rebuild one with tools\New-Disc.ps1.'
         }
         $checked++
     }
-    Add-DPLog -Message ('校验清单通过：' + $checked + ' 个文件 SHA-256 全部一致。')
+    Add-DPLog -Message ('Check manifest passed: all ' + $checked + ' files match their SHA-256.')
     return [pscustomobject]@{ Checked = $checked }
 }

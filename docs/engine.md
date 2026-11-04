@@ -101,7 +101,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<disc>\engine\launch.ps
    把 dafeiyu 的人设卡改成这张盘的人设。两件事都失败只写警告，不阻塞启动。
 10. **生成 patch**：重写 `home\persona.patch.yml`；若存在 `home\user.patch.yml`，参数顺序为 **先 user 后 persona**，保证人设最后生效。
 11. **起进程 + 等就绪**：`--profile web --patch <...> --port <p> --no-open`，`DSH_HOME` 指到人格 home，工作目录 `workspace\`；stdout/stderr 重定向到 `logs\`。轮询 stdout 里 `http://127.0.0.1:<port>/?token=<token>`：
-    - 拿到 → 打开浏览器，打印「DiscPersona 已启动 / 人格 / 地址 / 房间」四行，退出码 0；
+    - 拿到 → 打开浏览器，打印 `diskLIFE started` / `Persona:` / `URL:` / `Room:` 四行（英文），退出码 0；
     - 超时 → 杀进程树，E09，并打印 stdout 最后 15 行。
 
 ### 3.1 人设从哪来：固化 / 房间优先 / 升级
@@ -215,7 +215,7 @@ dsh 的默认工作区是 `%USERPROFILE%\Documents\deepseek-harness\default-work
 - **全部条目都拼**：`--patch` 通道没有关键词检索能力，只拼 `constant` 会让大部分世界书悄悄消失。
 - 排序：`constant: true` 优先，其次按 `insertion_order`（缺省用数组下标）。
 - 上限 **6000 字**，超出的条目在日志里报「略过 N 条」，不会静默丢弃。
-- 日志形如 `世界书：并入 3 条（约 114 字），上限 6000 字`；文件不存在或 JSON 坏掉只记警告，不影响启动。
+- 日志形如 `Lorebook: merged 3 entries (~114 chars), cap 6000 chars`；文件不存在或 JSON 坏掉只记警告，不影响启动。
 - 世界书取自**当前生效的那份人设**（房间优先），所以改房间里的 `lorebook.json` 重启即生效。
 
 ## 4. 为什么不脚手架（`--from-default-profile`）

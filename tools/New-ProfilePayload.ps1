@@ -1,38 +1,38 @@
 ﻿<#
 .SYNOPSIS
-    为一个 Persona 光盘准备「对话舒适包」：把挑好的 DSH 插件装进一个干净的
-    profile，打包成可以随盘分发的 payload（离线可用，别人首次启动不需要联网）。
+    Prepare a conversation comfort pack for a Persona disc: install the chosen DSH plugins into a clean
+    profile and pack it as a payload that ships on the disc (works offline; first start needs no network).
 
 .DESCRIPTION
-    DiscPersona 的启动器会把光盘上的 .discpersona\payload\profile-web 整个复制到
-    这个孩子的房间，代替 dsh 自己冷启动生成 profile。所以 payload 里必须同时有：
-      package.json（dsh.profile.bundles 列出插件）
-      node_modules（插件本体和它们的依赖）
-      payload.json（给启动器看的元信息：dsh 版本、插件清单）
+    The DiscPersona launcher copies .discpersona\payload\profile-web from the disc into
+    the child's room instead of letting dsh cold-start a profile. So the payload must contain:
+      package.json (dsh.profile.bundles lists the plugins)
+      node_modules (the plugins themselves and their dependencies)
+      payload.json (metadata for the launcher: dsh version, plugin list)
 
-    本脚本在一个临时 DSH_HOME 里用 dsh 自己的 plugin 命令安装插件，把生成的
-    profiles\web 复制到 -Out，再写 payload.json。可选 -Verify 会拿这份 payload
-    真起一次 dsh，确认插件不会拖垮启动。
+    This script installs plugins with dsh's own plugin command in a temporary DSH_HOME, copies the
+    generated profiles\web to -Out, then writes payload.json. The optional -Verify step really starts
+    dsh against that payload once to make sure the plugins do not break startup.
 
 .PARAMETER Preset
-    预置组合，默认 comfort：
-      comfort  对话舒适包 = dsh-soul-md（人设卡 + 文件式记忆）+ dsh-persona-dafeiyu（人设库 + 免重启切换）
-      token    省 token 包 = dsh-context-compress（软压缩）+ dsh-faster-compress（后台预备摘要）
-               + dsh-read-image-compress（图片进上下文前先压）
-      full     两个都要
-      custom   自己给 -Plugins
+    Preset combination; defaults to comfort:
+      comfort  comfort pack = dsh-soul-md (persona card + file-based memory) + dsh-persona-dafeiyu (persona library + switch without restart)
+      token    token saver = dsh-context-compress (soft compression) + dsh-faster-compress (background summaries)
+               + dsh-read-image-compress (compress images before they enter the context)
+      full     both of the above
+      custom   supply -Plugins yourself
 
 .PARAMETER Plugins
-    要装的 npm 包名（-Preset custom 时必填；多个用空格分隔）。
+    npm package names to install (required with -Preset custom; separate several with spaces).
 
 .PARAMETER Out
-    输出目录，默认 build\payload\profile-web（打包器会自动捡这个路径）。
+    Output directory; defaults to build\payload\<preset>\profile-web (the packer picks this path up automatically).
 
 .PARAMETER Force
-    输出目录已存在时删掉重建。
+    Delete and rebuild the output directory if it already exists.
 
 .PARAMETER SkipVerify
-    跳过最后的真启动验证（只想快速产出时用）。
+    Skip the final real-start verification (use when you only want a quick artifact).
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File tools\New-ProfilePayload.ps1
@@ -65,7 +65,7 @@ if ($Preset -ne 'custom') {
     $Plugins = $presetTable[$Preset]
 }
 elseif (-not $Plugins -or $Plugins.Count -eq 0) {
-    Write-Host '  !!  -Preset custom 需要用 -Plugins 指定包名（空格分隔多个）。' -ForegroundColor Red
+    Write-Host '  !!  -Preset custom needs -Plugins to name the packages (separate several with spaces).' -ForegroundColor Red
     exit 1
 }
 
@@ -99,11 +99,11 @@ function Test-UnderAllowedRoot {
 function Remove-Tree {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Path)) { return }
-    # 护栏：只有工作区 / %LOCALAPPDATA%\DiscPersona 之下的目录才允许整棵删除
+    # Guard: only directories under the workspace / %LOCALAPPDATA%\DiscPersona may be deleted wholesale
     if (-not (Test-UnderAllowedRoot -Path $Path)) {
-        throw ('拒绝删除工作区之外的目录：' + $Path)
+        throw ('Refusing to delete a directory outside the workspace: ' + $Path)
     }
-    # 长路径 + 只读文件：robocopy 镜像空目录比 Remove-Item 稳
+    # Long paths + read-only files: mirroring an empty dir with robocopy is more reliable than Remove-Item
     $empty = Join-Path $buildDir '_empty'
     if (-not (Test-Path -LiteralPath $empty)) { New-Item -ItemType Directory -Force -Path $empty | Out-Null }
     & robocopy $empty $Path /MIR /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
@@ -115,7 +115,7 @@ function Copy-Tree {
     $parent = Split-Path -Parent $Destination
     if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
     & robocopy $Source $Destination /E /NFL /NDL /NJH /NJS /NP /R:2 /W:1 /MT:8 | Out-Null
-    if ($LASTEXITCODE -ge 8) { throw ('robocopy 失败（exit ' + $LASTEXITCODE + '）：' + $Source + ' -> ' + $Destination) }
+    if ($LASTEXITCODE -ge 8) { throw ('robocopy failed (exit ' + $LASTEXITCODE + '): ' + $Source + ' -> ' + $Destination) }
 }
 
 function Get-TreeStats {
@@ -135,36 +135,36 @@ function Resolve-DshExe {
     return $null
 }
 
-# 护栏：-Out 必须落在工作区或 %LOCALAPPDATA%\DiscPersona 之下。
-# 这个目录会被整体清空重铺（见 Remove-Tree），指错一次就是删用户的东西。
+# Guard: -Out must live under the workspace or %LOCALAPPDATA%\DiscPersona.
+# This directory is wiped and rewritten wholesale (see Remove-Tree); one wrong path deletes the user's data.
 if (-not (Test-UnderAllowedRoot -Path $Out)) {
-    Fail 'PL00' ('输出目录必须在工作区或 %LOCALAPPDATA%\DiscPersona 之下：' + $Out)
+    Fail 'PL00' ('The output directory must live under the workspace or %LOCALAPPDATA%\DiscPersona: ' + $Out)
 }
 
-Write-Step ('输出：' + $Out)
+Write-Step ('Output: ' + $Out)
 if (Test-Path -LiteralPath $Out) {
-    if (-not $Force) { Fail 'PL01' ('输出目录已存在：' + $Out + '（加 -Force 覆盖）') }
+    if (-not $Force) { Fail 'PL01' ('Output directory already exists: ' + $Out + ' (use -Force to overwrite)') }
     $looksPayload = (Test-Path -LiteralPath (Join-Path $Out 'payload.json')) -or
                     (Test-Path -LiteralPath (Join-Path $Out 'profiles\web'))
     if (-not $looksPayload) {
-        Write-Host ('  警告：这个目录里没有 payload.json / profiles\web，看起来不像插件载荷，仍按 -Force 覆盖。') -ForegroundColor Yellow
+        Write-Host ('  WARN: this directory has no payload.json / profiles\web, so it does not look like a plugin payload; overwriting anyway because -Force was given.') -ForegroundColor Yellow
     }
     Remove-Tree -Path $Out
 }
 
 $dshExe = Resolve-DshExe
-if (-not $dshExe) { Fail 'PL02' '找不到 dsh 命令，无法安装插件。' }
-Write-Ok ('dsh：' + $dshExe)
+if (-not $dshExe) { Fail 'PL02' 'Cannot find the dsh command, so plugins cannot be installed.' }
+Write-Ok ('dsh: ' + $dshExe)
 
 $dshVersion = 'unknown'
 try {
     $v = & $dshExe --version 2>$null | Select-Object -First 1
     if ($v) { $dshVersion = ($v -replace '^.*?(\d+\.\d+\.\d+[^\s]*)', '$1').Trim() }
 } catch { }
-Write-Ok ('dsh 版本：' + $dshVersion)
+Write-Ok ('dsh version: ' + $dshVersion)
 
-# ---------- 1. 在临时 home 里装插件 ----------
-Write-Step ('在临时 home 安装插件：' + ($Plugins -join ', '))
+# ---------- 1. Install plugins into a temporary home ----------
+Write-Step ('Installing plugins into a temporary home: ' + ($Plugins -join ', '))
 Remove-Tree -Path $tempHome
 New-Item -ItemType Directory -Force -Path $tempHome | Out-Null
 
@@ -178,17 +178,17 @@ try {
     $ErrorActionPreference = $prevEap
     $text = ($installOutput | Out-String)
     Write-Host $text.TrimEnd()
-    if ($code -ne 0) { Fail 'PL03' ('插件安装失败（exit ' + $code + '）：' + ($text -split "`n" | Select-Object -Last 3)) }
+    if ($code -ne 0) { Fail 'PL03' ('Plugin install failed (exit ' + $code + '): ' + ($text -split "`n" | Select-Object -Last 3)) }
 } finally {
     if ($null -eq $oldHome) { Remove-Item Env:DSH_HOME -ErrorAction SilentlyContinue } else { $env:DSH_HOME = $oldHome }
 }
 
 $profileSrc = Join-Path $tempHome 'profiles\web'
-if (-not (Test-Path -LiteralPath (Join-Path $profileSrc 'package.json'))) { Fail 'PL04' '安装后没有生成 profiles\web\package.json。' }
+if (-not (Test-Path -LiteralPath (Join-Path $profileSrc 'package.json'))) { Fail 'PL04' 'profiles\web\package.json was not created after install.' }
 
 $pkg = Get-Content -LiteralPath (Join-Path $profileSrc 'package.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $bundles = @($pkg.dsh.profile.bundles)
-Write-Ok ('bundles：' + ($bundles -join ', '))
+Write-Ok ('bundles: ' + ($bundles -join ', '))
 
 $pluginInfo = @()
 foreach ($name in $Plugins) {
@@ -202,17 +202,17 @@ foreach ($name in $Plugins) {
     $pluginInfo += [ordered]@{ name = $name; range = $depVersion; version = $installed }
 }
 
-# ---------- 2. 复制到输出 ----------
-Write-Step ('复制 profile 到 ' + $Out)
+# ---------- 2. Copy to the output ----------
+Write-Step ('Copying the profile to ' + $Out)
 Copy-Tree -Source $profileSrc -Destination $Out
-# 临时 home 里的本机痕迹不要带出去
+# Do not carry local traces from the temporary home outside
 foreach ($junk in @('node_modules\.cache', '.pnpm-store')) {
     $p = Join-Path $Out $junk
     if (Test-Path -LiteralPath $p) { Remove-Tree -Path $p }
 }
 
 $stats = Get-TreeStats -Path $Out
-Write-Ok ('payload 文件数：' + $stats.FileCount + '，体积：' + [math]::Round($stats.Bytes / 1MB, 2) + ' MB')
+Write-Ok ('payload files: ' + $stats.FileCount + ', size: ' + [math]::Round($stats.Bytes / 1MB, 2) + ' MB')
 
 # ---------- 3. payload.json ----------
 $manifest = [ordered]@{
@@ -225,16 +225,16 @@ $manifest = [ordered]@{
     bundles    = $bundles
     fileCount  = $stats.FileCount
     bytes      = $stats.Bytes
-    note       = '由 tools/New-ProfilePayload.ps1 生成；启动器复制到人格 home 的 profiles\web。'
+    note       = 'Generated by tools/New-ProfilePayload.ps1; the launcher copies it into profiles\web under the persona home.'
 }
 $manifestPath = Join-Path $Out 'payload.json'
 $json = $manifest | ConvertTo-Json -Depth 6
 [System.IO.File]::WriteAllText($manifestPath, $json + "`r`n", (New-Object System.Text.UTF8Encoding($false)))
-Write-Ok ('payload.json：' + $manifestPath)
+Write-Ok ('payload.json: ' + $manifestPath)
 
-# ---------- 4. 真启动验证 ----------
+# ---------- 4. Real-start verification ----------
 if (-not $SkipVerify) {
-    Write-Step '验证：把 payload 当作 profile 真启动一次 dsh'
+    Write-Step 'Verify: start dsh once with the payload as its profile'
     Remove-Tree -Path $verifyHome
     New-Item -ItemType Directory -Force -Path (Join-Path $verifyHome 'profiles') | Out-Null
     Copy-Tree -Source $Out -Destination (Join-Path $verifyHome 'profiles\web')
@@ -262,9 +262,9 @@ if (-not $SkipVerify) {
             $tail = ''
             if (Test-Path -LiteralPath $stderr) { $tail = (Get-Content -LiteralPath $stderr -Tail 8 -Encoding UTF8) -join ' / ' }
             if (Test-Path -LiteralPath $stdout) { $tail += ' | ' + ((Get-Content -LiteralPath $stdout -Tail 8 -Encoding UTF8) -join ' / ') }
-            Fail 'PL05' ('payload 起不来（90 秒没有就绪地址）：' + $tail)
+            Fail 'PL05' ('payload did not start (no ready URL within 90 s): ' + $tail)
         }
-        Write-Ok ('payload 启动成功：' + $url)
+        Write-Ok ('payload started: ' + $url)
     } finally {
         if ($proc -and -not $proc.HasExited) {
             & taskkill /PID $proc.Id /T /F 2>$null | Out-Null
@@ -276,4 +276,4 @@ if (-not $SkipVerify) {
 
 Write-Host ''
 Write-Host ('PAYLOAD_OK preset=' + $Preset + ' ' + [math]::Round($stats.Bytes / 1MB, 2) + 'MB files=' + $stats.FileCount + ' plugins=' + $Plugins.Count + ' out=' + $Out) -ForegroundColor Green
-Write-Host '下一步：用 tools\New-Disc.ps1 打包时它会自动把 build\payload\profile-web 放进光盘。'
+Write-Host ('Next: pack with tools\New-Disc.ps1 -PayloadPreset ' + $Preset + ', which picks up ' + $Out + ' automatically.')

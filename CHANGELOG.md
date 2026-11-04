@@ -4,6 +4,52 @@ All notable changes to this project. Format loosely follows [Keep a Changelog](h
 this project does not promise semantic versioning for the launcher — the **disc format** version is what
 matters for compatibility.
 
+## [0.2.3] - 2026-11-05
+
+Everything a user sees while running the project is now English. The Studio's own bilingual UI is
+unchanged; the personas, the docs and the disc format are untouched.
+
+### Changed
+
+- **The launcher, the packer and their messages are English-only.** `engine/launch.ps1`,
+  `engine/lib/*.ps1`, `tools/New-Disc.ps1`, `tools/Test-Disc.ps1`, `tools/New-Iso.ps1`,
+  `tools/Burn-Iso.ps1`, `tools/New-ProfilePayload.ps1` and `engine/tools/disc-watch.ps1` no longer print
+  Chinese. Error codes (`E01`–`E10`, `B01`–`B08`, `I01`–`I04`, `PL00`–`PL05`) and the machine-readable
+  lines (`DISC_OK`, `ISO_OK`, `BURN_OK`, `BURN_FAIL`, `PAYLOAD_OK`) are byte-identical to 0.2.2.
+- The log file (`logs\launch-*.log`), `state.json` values and the disc watcher's log are English too.
+  `engine/_selftest` fixtures, the stub `dsh` scripts and `tools/_selftest/fake-persona` were translated
+  with their assertions retargeted, so the suite still runs 17/17.
+- Docs: `docs/engine.md` quotes the new output lines. `README`/`README.zh-CN` state plainly that only the
+  Studio is bilingual.
+
+### Fixed
+
+- `engine/launch.ps1` leaked three stray `0` lines before the summary: `Clear-DPReadOnly` returns a
+  count and three call sites printed it. They are `[void]`-suppressed now.
+- `tools/New-ProfilePayload.ps1`'s closing hint pointed at the pre-0.2.0 `build\payload\profile-web`
+  directory; it now names `-PayloadPreset` and the actual output path.
+
+---
+
+## [0.2.3] - 2026-11-05（中文）
+
+跑起来看到的每个字都是英文了。Studio 自己的双语界面不变；人设、文档与光盘格式都没动。
+
+### Changed
+
+- **启动器、打包器与它们的输出改为纯英文。** 上列 9 个脚本不再打印中文。错误码（`E01`–`E10`、
+  `B01`–`B08`、`I01`–`I04`、`PL00`–`PL05`）与机器可读行（`DISC_OK`、`ISO_OK`、`BURN_OK`、`BURN_FAIL`、
+  `PAYLOAD_OK`）与 0.2.2 逐字节一致。
+- 日志文件、`state.json` 的值、守望者日志同样是英文。自测夹具、假 `dsh` 脚本与假人设包一并翻译，
+  断言随之改指英文，自测仍是 17/17。
+- 文档：`docs/engine.md` 里引用的输出行已更新；两份 README 都写明「只有 Studio 是双语的」。
+
+### Fixed
+
+- `engine/launch.ps1` 在摘要前多打三行 `0`：`Clear-DPReadOnly` 有返回值，三处调用没抑制。现已 `[void]`。
+- `tools/New-ProfilePayload.ps1` 结尾提示仍指向 0.2.0 之前的 `build\payload\profile-web`，
+  改为提示 `-PayloadPreset` 与实际输出路径。
+
 ## [0.2.2] - 2026-11-05
 
 ### Added

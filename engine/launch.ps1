@@ -1,16 +1,16 @@
 ﻿#requires -Version 5.1
 <#
-  DiscPersona 启动引擎
-  用法（由光盘根目录 start.cmd 调用）：
+  diskLIFE launch engine
+  Usage (called by start.cmd in the disc root):
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<disc>\engine\launch.ps1" -DiscRoot "<disc>"
 
-  可选参数（测试/排障用，正常使用不需要）：
-    -DshPath <path>        指定 dsh.cmd 全路径（等价环境变量 DISCPERSONA_DSH）
-    -HomeRoot <path>       指定人格 home 的父目录（默认跟着 dsh 安装位置：<安装根>\DiscPersona\personas）
-    -StartTimeoutSec <n>   等就绪的最大秒数（默认 60）
-    -NoBrowser             不自动打开浏览器
-    -UpgradePersona        用盘上的人设覆盖房间人设（先备份成 persona.bak-<时间戳>）
-    -NoWait                启动完成后立刻返回，不等按键（自动化 / 自测 / 光驱守望者用）
+  Optional parameters (for tests and troubleshooting; not needed in normal use):
+    -DshPath <path>        full path to dsh.cmd (same as the DISCPERSONA_DSH env var)
+    -HomeRoot <path>       parent directory of the persona home (default follows the dsh install: <install root>\DiscPersona\personas)
+    -StartTimeoutSec <n>   max seconds to wait for readiness (default 60)
+    -NoBrowser             do not open a browser automatically
+    -UpgradePersona        overwrite the room persona with the one on the disc (backed up to persona.bak-<timestamp> first)
+    -NoWait                return right after launch instead of waiting for a key (automation / self-test / disc watcher)
 #>
 [CmdletBinding()]
 param(
@@ -36,30 +36,30 @@ $script:EngineDir = Split-Path -Parent $PSCommandPath
 Initialize-DPConsole
 Assert-DPPlatform
 
-# ---------------------------------------------------------------- 1. 光盘完整性
+# ---------------------------------------------------------------- 1. disc integrity
 $disc = Get-DPNormalizedPath -Path $DiscRoot
 if (-not $disc -or -not (Test-Path -LiteralPath $disc -PathType Container)) {
     Stop-DiscPersona -Code 'E01' `
-        -Message ('找不到这张光盘的根目录：' + $DiscRoot) `
-        -Hint '请从光盘根目录双击 start.cmd 运行，不要单独拷贝 engine 文件夹。'
+        -Message ('Cannot find the root of this disc: ' + $DiscRoot) `
+        -Hint 'Double-click start.cmd in the disc root instead of copying the engine folder elsewhere.'
 }
 
 $required = @(
-    @{ Rel = 'persona\persona.yml'; Label = '人设文件' },
-    @{ Rel = 'persona\meta.json'; Label = '人设元信息' },
-    @{ Rel = 'pad.bin'; Label = '光盘指纹文件' }
+    @{ Rel = 'persona\persona.yml'; Label = 'persona file' },
+    @{ Rel = 'persona\meta.json'; Label = 'persona metadata' },
+    @{ Rel = 'pad.bin'; Label = 'disc fingerprint file' }
 )
 $missing = New-Object System.Collections.ArrayList
 foreach ($item in $required) {
     $full = Join-Path $disc $item.Rel
     if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
-        [void]$missing.Add($item.Rel + '（' + $item.Label + '）')
+        [void]$missing.Add($item.Rel + ' (' + $item.Label + ')')
     }
 }
 if ($missing.Count -gt 0) {
     Stop-DiscPersona -Code 'E01' `
-        -Message ('这张光盘不完整，缺少：' + ($missing -join '、')) `
-        -Hint '请换一张光盘，或用 tools\New-Disc.ps1 重新制作一张。'
+        -Message ('This disc is incomplete, missing: ' + ($missing -join ', ')) `
+        -Hint 'Use another disc, or rebuild one with tools\New-Disc.ps1.'
 }
 
 # ---------------------------------------------------------------- 2. discID + manifest
@@ -68,8 +68,8 @@ try {
     $padHash = Get-DPFileSha256 -Path $padPath
 } catch {
     Stop-DiscPersona -Code 'E02' `
-        -Message 'pad.bin 读不出来，没法确认这是哪一张光盘。' `
-        -Hint '光盘可能磨损或光驱读盘失败：请擦净光盘、换光驱重试，或重新制作一张。'
+        -Message 'Cannot read pad.bin, so this disc cannot be identified.' `
+        -Hint 'The disc may be worn or the drive may be failing: clean the disc, try another drive, or rebuild the disc.'
 }
 $discID = $padHash.Substring(0, 16)
 
@@ -80,17 +80,17 @@ if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
     $manifestChecked = $manifestResult.Checked
 }
 
-# ---------------------------------------------------------------- 3. home / 日志
-# 房间放哪：优先跟着 dsh 的安装位置走（用户要求），找不到才退回用户目录。
+# ---------------------------------------------------------------- 3. home / logs
+# Where the room lives: prefer the dsh install location; fall back to the user directory only if that fails.
 $baseRootSource = ''
 if (-not [string]::IsNullOrWhiteSpace($HomeRoot)) {
     $baseRoot = Get-DPNormalizedPath -Path $HomeRoot
     if (-not $baseRoot) { $baseRoot = $HomeRoot }
-    $baseRootSource = '命令行 -HomeRoot'
+    $baseRootSource = 'command line -HomeRoot'
 } elseif (-not [string]::IsNullOrWhiteSpace($env:DISCPERSONA_HOME)) {
     $baseRoot = Get-DPNormalizedPath -Path $env:DISCPERSONA_HOME
     if (-not $baseRoot) { $baseRoot = $env:DISCPERSONA_HOME }
-    $baseRootSource = '环境变量 DISCPERSONA_HOME'
+    $baseRootSource = 'env var DISCPERSONA_HOME'
 } else {
     $baseRoot = $null
     $installRoot = Get-DPInstallRootFromDsh -DshPath $DshPath
@@ -98,12 +98,12 @@ if (-not [string]::IsNullOrWhiteSpace($HomeRoot)) {
         $candidate = Join-Path $installRoot 'DiscPersona\personas'
         if (Test-DPDirectoryWritable -Path $candidate) {
             $baseRoot = $candidate
-            $baseRootSource = '跟着 dsh 安装位置（' + $installRoot + '）'
+            $baseRootSource = 'next to the dsh install (' + $installRoot + ')'
         }
     }
     if (-not $baseRoot) {
         $baseRoot = Join-Path $env:LOCALAPPDATA 'DiscPersona\personas'
-        $baseRootSource = '没有可用的 dsh 安装位置，退回用户目录'
+        $baseRootSource = 'no usable dsh install location, falling back to the user directory'
     }
 }
 $personaRoot = Join-Path $baseRoot $discID
@@ -115,46 +115,46 @@ $lockPath = Join-Path $homeDir '.lock'
 
 if (-not (Test-DPDirectoryWritable -Path $personaRoot)) {
     Stop-DiscPersona -Code 'E06' `
-        -Message ('这个孩子的房间写不进去：' + $personaRoot) `
-        -Hint '请检查磁盘空间和文件夹权限，或设置环境变量 LOCALAPPDATA 到一个可写目录后重试。'
+        -Message ('Cannot write to this persona room: ' + $personaRoot) `
+        -Hint 'Check free disk space and folder permissions, or point LOCALAPPDATA at a writable directory and retry.'
 }
 foreach ($dir in @($homeDir, $logsDir, $workspaceDir)) {
     if (-not (Test-DPDirectoryWritable -Path $dir)) {
         Stop-DiscPersona -Code 'E06' `
-            -Message ('这个孩子的房间写不进去：' + $dir) `
-            -Hint '请检查磁盘空间和文件夹权限后重试。'
+            -Message ('Cannot write to this persona room: ' + $dir) `
+            -Hint 'Check free disk space and folder permissions, then retry.'
     }
 }
 
 $stamp = Format-DPFileStamp
 $script:DPLogPath = Join-Path $logsDir ('launch-' + $stamp + '.log')
 $script:DPPersonaHome = $personaRoot
-Add-DPLog -Message ('DiscPersona 启动：光盘 ' + $disc + '，discID ' + $discID)
-Add-DPLog -Message ('人格目录：' + $personaRoot)
-Add-DPLog -Message ('房间根目录：' + $baseRoot + '（' + $baseRootSource + '）')
+Add-DPLog -Message ('diskLIFE launch: disc ' + $disc + ', discID ' + $discID)
+Add-DPLog -Message ('Persona directory: ' + $personaRoot)
+Add-DPLog -Message ('Room root: ' + $baseRoot + ' (' + $baseRootSource + ')')
 if ($manifestChecked -gt 0) {
-    Add-DPLog -Message ('完整性校验：' + $manifestChecked + ' 个文件通过。')
+    Add-DPLog -Message ('Integrity check: ' + $manifestChecked + ' files verified.')
 } else {
-    Add-DPLog -Message '没有 .discpersona\manifest.json，跳过逐文件校验（只确认了三个必需文件存在）。' -Level '警告'
+    Add-DPLog -Message 'No .discpersona\manifest.json, skipping the per-file check (only the three required files were confirmed).' -Level 'Warn'
 }
 
-# 只保留最近 10 个 launch 日志
+# Keep only the 10 most recent launch logs
 try {
     $oldLogs = @(Get-ChildItem -LiteralPath $logsDir -Filter 'launch-*.log' -File -ErrorAction SilentlyContinue |
         Sort-Object Name -Descending | Select-Object -Skip 10)
     foreach ($f in $oldLogs) { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction SilentlyContinue }
 } catch { }
 
-# ---------------------------------------------------------------- 4. 读人设（房间优先，盘上兜底）
+# ---------------------------------------------------------------- 4. load the persona (room first, disc as fallback)
 function Sync-DPPersonaCard {
     <#
-      把房间里的人设同步成 dsh-persona-dafeiyu 的一张卡，并让它成为当前选中项。
+      Sync the room persona into a card of dsh-persona-dafeiyu and make it the selected one.
 
-      为什么需要这一步：dafeiyu 的库为空时会默认注入它自带的「大肥鱼」，
-      于是系统提示里同时出现「大肥鱼」和 AGENTS.md 里的身份，模型会精神分裂。
-      这里写一份 personas.json：current = discpersona（就是我们的人设），
-      disabled 里禁掉内置的 dafeiyu / acha，正文每次启动按房间 persona.yml 重写，
-      保证跟 AGENTS.md 始终是同一份。插件不在时静默跳过。
+      Why this is needed: an empty dafeiyu library injects its built-in "Big Fatty Fish",
+      so the system prompt would hold both that identity and the one from AGENTS.md, and the model would split.
+      Here we write personas.json: current = discpersona (our persona),
+      disable the built-in dafeiyu / acha, and rewrite the body from the room persona.yml on every launch,
+      so it always matches AGENTS.md. Skipped silently when the plugin is absent.
     #>
     param(
         [Parameter(Mandatory = $true)][string]$HomeDir,
@@ -176,7 +176,7 @@ function Sync-DPPersonaCard {
                     if ($item -and [string]$item.id -ne 'discpersona') { $kept += $item }
                 }
             } catch {
-                Add-DPLog -Message ('旧人设库读不出来，按新建处理：' + $_.Exception.Message) -Level '警告'
+                Add-DPLog -Message ('Cannot read the existing persona library, starting fresh: ' + $_.Exception.Message) -Level 'Warn'
             }
         }
 
@@ -184,7 +184,7 @@ function Sync-DPPersonaCard {
             id          = 'discpersona'
             name        = $Name
             source      = 'imported'
-            description = '这张光盘上的人设，由启动器每次启动同步'
+            description = 'The persona on this disc, synced by the launcher on every launch'
             text        = $Text
         }
         $store = [ordered]@{
@@ -200,10 +200,10 @@ function Sync-DPPersonaCard {
         $ser = New-Object System.Web.Script.Serialization.JavaScriptSerializer
         $ser.MaxJsonLength = 8388608
         Write-DPTextFile -Path $storeFile -Text $ser.Serialize($store)
-        Add-DPLog -Message ('已同步人设卡：' + $Name + '（禁用内置大肥鱼 / 阿茶）')
+        Add-DPLog -Message ('Persona card synced: ' + $Name + ' (built-in Big Fatty Fish / Acha disabled)')
         return $true
     } catch {
-        Add-DPLog -Message ('人设卡同步失败（不阻塞启动）：' + $_.Exception.Message) -Level '警告'
+        Add-DPLog -Message ('Persona card sync failed (launch continues): ' + $_.Exception.Message) -Level 'Warn'
         return $false
     }
 }
@@ -229,10 +229,10 @@ function Read-DPMetaFile {
 
 function Get-DPLorebookText {
     <#
-      把 lorebook.json 里的条目拼成一段「世界书」附录。
-      DiscPersona 走的是 --patch 通道，没有关键词检索能力，所以默认「全部常驻」：
-      先按 constant=true 的优先级排，再按 insertion_order，累计到 -MaxChars 为止。
-      超出的条目会在日志里报「略过 N 条」，不会静默丢失。
+      Join the entries in lorebook.json into a "lorebook" appendix.
+      diskLIFE uses the --patch channel, which has no keyword retrieval, so everything is always on by default:
+      sort by constant=true first, then insertion_order, and stop at -MaxChars.
+      Entries that do not fit are reported in the log as "skipped N", never dropped silently.
     #>
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -245,7 +245,7 @@ function Get-DPLorebookText {
         $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
         $doc = $raw | ConvertFrom-Json
     } catch {
-        Add-DPLog -Message ('lorebook.json 解析失败，已忽略：' + $_.Exception.Message) -Level '警告'
+        Add-DPLog -Message ('Cannot parse lorebook.json, ignoring it: ' + $_.Exception.Message) -Level 'Warn'
         return ''
     }
     if ($null -eq $doc) { return '' }
@@ -280,8 +280,8 @@ function Get-DPLorebookText {
     $sorted = @($rows | Sort-Object -Property @{ Expression = 'Const'; Descending = $true }, @{ Expression = 'Order'; Descending = $false })
 
     $sb = New-Object System.Text.StringBuilder
-    [void]$sb.Append("## 世界书（设定，不是台词）`n")
-    [void]$sb.Append("下面这些是你所在世界的事实。它们始终成立，但不要主动背诵，也不要逐条复述。`n")
+    [void]$sb.Append("## Lorebook (setting, not dialogue)`n")
+    [void]$sb.Append("These are facts about the world you live in. They always hold, but do not recite them unprompted or repeat them entry by entry.`n")
     $used = 0
     $kept = 0
     $skipped = 0
@@ -297,12 +297,12 @@ function Get-DPLorebookText {
         $kept++
     }
     if ($kept -eq 0) { return '' }
-    Add-DPLog -Message ('世界书：并入 ' + $kept + ' 条（约 ' + $used + ' 字），上限 ' + $MaxChars + ' 字' + $(if ($skipped -gt 0) { '，略过 ' + $skipped + ' 条' } else { '' }))
+    Add-DPLog -Message ('Lorebook: ' + $kept + ' entries merged (~' + $used + ' chars), limit ' + $MaxChars + ' chars' + $(if ($skipped -gt 0) { ', skipped ' + $skipped } else { '' }))
     return $sb.ToString()
 }
 
 function Compare-DPVersionText {
-    <# 语义化比较：返回 -1 / 0 / 1；非数字段按字符串比，缺失段按 0。 #>
+    <# Semantic compare: returns -1 / 0 / 1; non-numeric parts compare as strings, missing parts as 0. #>
     param([string]$Left, [string]$Right)
     if ([string]::IsNullOrWhiteSpace($Left)) { $Left = '0.0.0' }
     if ([string]::IsNullOrWhiteSpace($Right)) { $Right = '0.0.0' }
@@ -333,30 +333,30 @@ $discPersonaYml = Join-Path $discPersonaDir 'persona.yml'
 $roomPersonaYml = Join-Path $roomPersonaDir 'persona.yml'
 $discMeta = Read-DPMetaFile -Path (Join-Path $discPersonaDir 'meta.json')
 
-# -UpgradePersona：先备份房间人设，再让下面的「固化」用盘上的版本重建
+# -UpgradePersona: back up the room persona, then let the freeze below rebuild it from the disc version
 $backupDir = $null
 if ($UpgradePersona -and (Test-Path -LiteralPath $roomPersonaDir -PathType Container)) {
     $backupDir = Join-Path $personaRoot ('persona.bak-' + $stamp)
     try {
         Copy-Item -LiteralPath $roomPersonaDir -Destination $backupDir -Recurse -Force -ErrorAction Stop
         Remove-Item -LiteralPath $roomPersonaDir -Recurse -Force -ErrorAction Stop
-        Add-DPLog -Message ('-UpgradePersona：房间人设已备份到 ' + $backupDir + '，改用盘上的版本。') -Level '提示'
+        Add-DPLog -Message ('-UpgradePersona: room persona backed up to ' + $backupDir + ', using the disc version.') -Level 'Notice'
     } catch {
-        Add-DPLog -Message ('-UpgradePersona 备份失败，放弃覆盖：' + $_.Exception.Message) -Level '错误'
+        Add-DPLog -Message ('-UpgradePersona backup failed, not overwriting: ' + $_.Exception.Message) -Level 'Error'
         $backupDir = $null
     }
 }
 
 $roomHadPersona = Test-Path -LiteralPath $roomPersonaYml -PathType Leaf
 if (-not $roomHadPersona) {
-    # 首次运行：把盘上的人设整份固化进房间，之后以房间为准
+    # First run: freeze the whole disc persona into the room; the room wins from then on
     try {
         if (Test-Path -LiteralPath $roomPersonaDir) { Remove-Item -LiteralPath $roomPersonaDir -Recurse -Force }
         Copy-Item -LiteralPath $discPersonaDir -Destination $roomPersonaDir -Recurse -Force -ErrorAction Stop
-        Clear-DPReadOnly -Path $roomPersonaDir
-        Add-DPLog -Message ('已把盘上的人设固化到房间：' + $roomPersonaDir) -Level '提示'
+        [void](Clear-DPReadOnly -Path $roomPersonaDir)
+        Add-DPLog -Message ('Disc persona frozen into the room: ' + $roomPersonaDir) -Level 'Notice'
     } catch {
-        Add-DPLog -Message ('人设固化失败，本次直接用盘上的：' + $_.Exception.Message) -Level '警告'
+        Add-DPLog -Message ('Freeze failed, using the disc persona for this launch: ' + $_.Exception.Message) -Level 'Warn'
     }
     $roomHadPersona = Test-Path -LiteralPath $roomPersonaYml -PathType Leaf
 }
@@ -367,17 +367,17 @@ $personaYml = Join-Path $personaDir 'persona.yml'
 
 $meta = Read-DPMetaFile -Path (Join-Path $personaDir 'meta.json')
 if (-not $meta.Name) {
-    Add-DPLog -Message '人设 meta.json 里没有 name 字段，使用默认名字。' -Level '警告'
+    Add-DPLog -Message 'persona meta.json has no name field, using the default name.' -Level 'Warn'
 }
 
-# 盘上人设比房间里新时：不静默覆盖，只记一笔待升级
+# When the disc persona is newer than the room one: never overwrite silently, only record a pending upgrade
 $pendingUpgrade = $null
 if ($personaSource -eq 'room') {
     $roomVersion = $meta.Version
     $discVersion = $discMeta.Version
     if ($discVersion -and (Compare-DPVersionText -Left $discVersion -Right $roomVersion) -gt 0) {
         $pendingUpgrade = [ordered]@{ from = $roomVersion; to = $discVersion }
-        Add-DPLog -Message ('这张盘上的人设比房间里的新（' + $discVersion + ' > ' + $roomVersion + '），已保留房间版本；要更新请加 -UpgradePersona。') -Level '提示'
+        Add-DPLog -Message ('The persona on this disc is newer than the room one (' + $discVersion + ' > ' + $roomVersion + '); the room version was kept. Add -UpgradePersona to update.') -Level 'Notice'
     }
 }
 
@@ -385,24 +385,24 @@ try {
     $personaDoc = Read-DPPersonaDocument -Path $personaYml
 } catch {
     Stop-DiscPersona -Code 'E08' `
-        -Message ('人设文件读不出来或格式不对：' + $personaYml) `
-        -Hint '请确认 persona.yml 是 UTF-8 文本，并且 system_prompt 使用 | 块标量写法。'
+        -Message ('Cannot read the persona file, or its format is wrong: ' + $personaYml) `
+        -Hint 'Make sure persona.yml is UTF-8 text and system_prompt uses the | block scalar form.'
 }
 if (-not $personaDoc.HasSystemPrompt -or [string]::IsNullOrWhiteSpace([string]$personaDoc.SystemPrompt)) {
     Stop-DiscPersona -Code 'E08' `
-        -Message ('人设文件里找不到 system_prompt：' + $personaYml) `
-        -Hint '请在人设文件里写一段 system_prompt: | 开头的人设文本，或换一张光盘。'
+        -Message ('No system_prompt found in the persona file: ' + $personaYml) `
+        -Hint 'Add a persona text starting with system_prompt: | to the persona file, or use another disc.'
 }
 if ($null -eq $personaDoc.SystemPrompt) { $personaDoc.SystemPrompt = '' }
 
-# 世界书：常驻条目拼在 system_prompt 末尾（盘上 / 房间里的 lorebook.json）
+# Lorebook: always-on entries are appended to system_prompt (lorebook.json on the disc / in the room)
 $lorebookPath = Join-Path $personaDir 'lorebook.json'
 $lorebookText = Get-DPLorebookText -Path $lorebookPath
 if ($lorebookText -ne '') {
     $personaDoc.SystemPrompt = $personaDoc.SystemPrompt.TrimEnd() + "`n`n" + $lorebookText
 }
 
-$personaName = '未命名'
+$personaName = 'Unnamed'
 if ($meta.Name) { $personaName = $meta.Name }
 elseif ($personaDoc.Name) { $personaName = $personaDoc.Name }
 
@@ -410,9 +410,9 @@ $personaVersion = '1.0.0'
 if ($meta.Version) { $personaVersion = $meta.Version }
 elseif ($personaDoc.Version) { $personaVersion = $personaDoc.Version }
 
-Add-DPLog -Message ('人设来源：' + $personaSource + '（' + $personaYml + '），版本 ' + $personaVersion)
+Add-DPLog -Message ('Persona source: ' + $personaSource + ' (' + $personaYml + '), version ' + $personaVersion)
 
-# ---------------------------------------------------------------- 5. 单实例锁
+# ---------------------------------------------------------------- 5. single-instance lock
 $lock = Read-DPLock -Path $lockPath
 $lockAlive = $false
 if ($lock) {
@@ -431,32 +431,32 @@ if ($lockAlive) {
             if ($stateObj.PSObject.Properties['lastUrl'] -and $stateObj.lastUrl) { $lastUrl = [string]$stateObj.lastUrl }
         } catch { }
     }
-    Add-DPLog -Message ('已有实例在运行（PID ' + $lockPid + '），不再重复启动。') -Level '提示'
+    Add-DPLog -Message ('An instance is already running (PID ' + $lockPid + '), not starting another.') -Level 'Notice'
     Write-DPLine ''
     if ($lastUrl) {
-        Write-DPLine ('  这个孩子已经在醒着了：' + $lastUrl) 'Cyan'
+        Write-DPLine ('  This persona is already running: ' + $lastUrl) 'Cyan'
         if (-not $NoBrowser) { Open-DPUrl -Url $lastUrl | Out-Null }
     } else {
-        Write-DPLine '  这个孩子已经在醒着了，但没记下地址。' 'Cyan'
+        Write-DPLine '  This persona is already running, but no URL was recorded.' 'Cyan'
     }
-    Write-DPLine '  错误码：E10（已在运行）' 'DarkGray'
+    Write-DPLine '  Error code: E10 (already running)' 'DarkGray'
     Write-DPLine ''
     exit 0
 }
 if ($lock) {
-    Add-DPLog -Message '发现上次残留的锁（进程已退出），继续启动。' -Level '警告'
+    Add-DPLog -Message 'Found a lock left by a previous run (process exited), continuing.' -Level 'Warn'
     Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue
 }
 
-# 尽早抢占单实例锁：payload 复制 + 冷启动 bootstrap 要几十秒，
-# 这期间并发双击会起两个实例（锁等到最后才写就挡不住）。
+# Take the single-instance lock early: payload copy + cold boot bootstrap take tens of seconds,
+# and a second double-click in that window would start another instance (a lock written at the end cannot stop it).
 try {
     Write-DPLock -Path $lockPath -ProcessId $PID -StartTicks 0 -StartedAt ((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')) -Port 0
 } catch {
-    Add-DPLog -Message ('提前写锁失败（不阻塞启动）：' + $_.Exception.Message) -Level '警告'
+    Add-DPLog -Message ('Early lock write failed (launch continues): ' + $_.Exception.Message) -Level 'Warn'
 }
 
-# ---------------------------------------------------------------- 6. 首启准备
+# ---------------------------------------------------------------- 6. first-run preparation
 $profileDir = Join-Path $homeDir 'profiles\web'
 $firstBoot = -not (Test-Path -LiteralPath $profileDir -PathType Container)
 $payloadUsedNow = $false
@@ -487,13 +487,13 @@ function ConvertTo-DPJsonString {
 
 function Sync-DPWorkspace {
     <#
-      把 dsh 的默认工作区钉在这个孩子的房间里，而不是系统「文档」下的
-      deepseek-harness\default-workspace。
+      Pin the dsh default workspace inside this persona room instead of
+      deepseek-harness\default-workspace under the system Documents folder.
 
-      为什么必须改：dsh 首次打开网页时会把默认工作区建在「文档」下，
-      人格实例和主实例于是共用同一个目录 —— 记忆、AGENTS.md、随手写的文件
-      都会串在一起。这里直接写一份 storage v2 的 workspace.json，
-      只保留房间这一个工作区并设为默认（JSON 手写，避免 ConvertTo-Json 的空数组坑）。
+      Why this must change: on the first page load dsh creates the default workspace under Documents,
+      so the persona instance and the main instance share one directory -- memory, AGENTS.md, scratch files
+      all bleed together. Here we write a storage v2 workspace.json directly,
+      keeping only the room workspace and making it the default (JSON written by hand to avoid the ConvertTo-Json empty-array trap).
     #>
     param(
         [Parameter(Mandatory = $true)][string]$HomeDir,
@@ -524,7 +524,7 @@ function Sync-DPWorkspace {
                     }
                 }
             } catch {
-                Add-DPLog -Message ('旧工作区记录读不出来，按新建处理：' + $_.Exception.Message) -Level '警告'
+                Add-DPLog -Message ('Cannot read the existing workspace record, starting fresh: ' + $_.Exception.Message) -Level 'Warn'
             }
         }
         if (-not $id) { $id = [guid]::NewGuid().ToString() }
@@ -544,19 +544,19 @@ function Sync-DPWorkspace {
                 '"createdAt":' + (ConvertTo-DPJsonString $now) + ',' +
                 '"updatedAt":' + (ConvertTo-DPJsonString $now) + '}}}}'
         Write-DPTextFile -Path $file -Text $json
-        Add-DPLog -Message ('默认工作区：' + $WorkspaceDir)
+        Add-DPLog -Message ('Default workspace: ' + $WorkspaceDir)
         return $true
     } catch {
-        Add-DPLog -Message ('工作区记录修正失败（不阻塞启动）：' + $_.Exception.Message) -Level '警告'
+        Add-DPLog -Message ('Workspace record fix failed (launch continues): ' + $_.Exception.Message) -Level 'Warn'
         return $false
     }
 }
 
 function Invoke-DPProfileBootstrap {
     <#
-      首启时让 dsh 自己把 shipped profile web 落到 DSH_HOME\profiles\web。
-      为什么不 `dsh --profile web --from-default-profile web`：dsh 会拒绝（见 docs\engine.md）。
-      做法：用 --port 0 冷启一次，拿到 URL（等它写好 profile）后立刻杀掉。
+      On first run, let dsh drop its shipped web profile into DSH_HOME\profiles\web itself.
+      Why not `dsh --profile web --from-default-profile web`: dsh refuses that (see docs\engine.md).
+      Instead: cold-start once with --port 0, grab the URL (after the profile is written), then kill it at once.
     #>
     param([string]$DshPath, [string]$HomeDir, [string]$WorkspaceDir, [string]$LogsDir, [string]$Stamp)
 
@@ -564,27 +564,27 @@ function Invoke-DPProfileBootstrap {
     $stderr = Join-Path $LogsDir ('bootstrap-' + $Stamp + '.err.log')
     $inst = Start-DshInstance -DshPath $DshPath -HomeDir $HomeDir -WorkingDir $WorkspaceDir -Port 0 `
         -Patches @() -StdoutPath $stdout -StderrPath $stderr
-    Add-DPLog -Message ('脚手架：冷启动 dsh 生成 shipped profile web（PID ' + $inst.Process.Id + '）。')
+    Add-DPLog -Message ('Bootstrap: cold-starting dsh to generate the shipped web profile (PID ' + $inst.Process.Id + ').')
     $ready = Wait-DshUrl -Instance $inst -TimeoutSec 45
     if ($inst.Process -and -not $inst.Process.HasExited) { Stop-DPProcessTree -ProcessId $inst.Process.Id }
     if (-not $ready.Url) {
         $tail = Get-DPLogTail -Path $stdout -Lines 15
-        Add-DPLog -Message '脚手架冷启动没有拿到就绪地址。' -Level '警告'
-        foreach ($line in $tail) { Add-DPLog -Message ('  | ' + $line) -Level '警告' }
+        Add-DPLog -Message 'Bootstrap cold start never reported a ready URL.' -Level 'Warn'
+        foreach ($line in $tail) { Add-DPLog -Message ('  | ' + $line) -Level 'Warn' }
         return $false
     }
-    # 只要 dsh 打印了就绪地址，就认为这一步成功；profiles\web 会在真正启动时补齐。
+    # A printed ready URL is enough to call this step a success; profiles\web is filled in by the real launch.
     return $true
 }
 
 function Initialize-DPPersonaAssets {
     <#
-      凭据 / seed / AGENTS.md 的幂等补课。
+      Idempotent catch-up for credentials / seed / AGENTS.md.
 
-      为什么单独成函数：这几步原来只在 firstBoot 里做一次，而 firstBoot 只看
-      profiles\web 存不存在（payload 复制就会创建它）。首启一旦在凭据那步失败
-      （E07、断电、Ctrl-C），下次会走 else 分支，凭据就永远补不回来。
-      所以每次启动都调用一次，缺什么补什么。
+      Why this is its own function: these steps used to run once under firstBoot, which only checks
+      whether profiles\web exists (payload copy creates it). If the first run fails at the credentials step
+      (E07, power loss, Ctrl-C), the next run takes the else branch and the credentials are never restored.
+      So it runs on every launch and fills in whatever is missing.
     #>
     param(
         [Parameter(Mandatory = $true)][string]$HomeDir,
@@ -592,36 +592,36 @@ function Initialize-DPPersonaAssets {
         [Parameter(Mandatory = $true)][string]$WorkspaceDir
     )
 
-    # 1) 凭据：只搬三条 LLM 相关记录，不解析、不打印
+    # 1) credentials: copy the three LLM records only, never parse or print them
     $targetCred = Join-Path $HomeDir '.credentials.yaml'
     if (-not (Test-DPCredentialHasLlm -Path $targetCred)) {
         $sourceHome = Get-DPSourceHome
         if (-not $sourceHome) {
             Stop-DiscPersona -Code 'E07' `
-                -Message '这台电脑上找不到 DeepSeek Harness 的凭据目录。' `
-                -Hint '请先在本机正常登录过一次 DSH，或设置环境变量 DISCPERSONA_SOURCE_HOME 指向主 home。'
+                -Message 'Cannot find the DeepSeek Harness credentials directory on this machine.' `
+                -Hint 'Sign in to DSH once on this machine first, or point DISCPERSONA_SOURCE_HOME at the source home.'
         }
         $sourceCred = Join-Path $sourceHome '.credentials.yaml'
         if (-not (Test-DPCredentialHasLlm -Path $sourceCred)) {
             Stop-DiscPersona -Code 'E07' `
-                -Message ('主 home（' + $sourceHome + '）里没有可用的 DeepSeek 凭据。') `
-                -Hint '请先在本机正常登录过一次 DSH（打开 DSH 并用 DeepSeek 账号登录），再插入这张光盘。'
+                -Message ('No usable DeepSeek credentials in the source home (' + $sourceHome + ').') `
+                -Hint 'Sign in to DSH once on this machine first (open DSH and sign in with your DeepSeek account), then insert this disc.'
         }
         $import = Import-DPLlmCredentials -SourcePath $sourceCred -TargetPath $targetCred
         if (-not $import.Ok) {
             if ($import.Reason -eq 'write-failed') {
                 Stop-DiscPersona -Code 'E06' `
-                    -Message ('凭据写不进这个房间：' + $targetCred) `
-                    -Hint '请检查磁盘空间和文件夹权限后重试。'
+                    -Message ('Cannot write credentials into this room: ' + $targetCred) `
+                    -Hint 'Check free disk space and folder permissions, then retry.'
             }
             Stop-DiscPersona -Code 'E07' `
-                -Message ('凭据搬运失败（' + $import.Reason + '）：' + $sourceCred) `
-                -Hint '请先在本机正常登录过一次 DSH 后重试。'
+                -Message ('Credentials import failed (' + $import.Reason + '): ' + $sourceCred) `
+                -Hint 'Sign in to DSH once on this machine, then retry.'
         }
-        Add-DPLog -Message '已导入 DeepSeek 凭据（只搬记录，不读取密钥内容）。'
+        Add-DPLog -Message 'DeepSeek credentials imported (records copied, key values never read).'
     }
 
-    # 2) seed：只在房间还空着时铺一次，避免覆盖用户改过的记忆
+    # 2) seed: lay it down once while the room is still empty, so a user-edited memory is never overwritten
     $seedSrc = Join-Path $PersonaDir 'seed'
     $seedDst = Join-Path $WorkspaceDir 'memories'
     $seedMissing = -not (Test-Path -LiteralPath $seedDst -PathType Container) -or
@@ -630,29 +630,29 @@ function Initialize-DPPersonaAssets {
         try {
             if (-not (Test-Path -LiteralPath $seedDst)) { New-Item -ItemType Directory -Force -Path $seedDst | Out-Null }
             Copy-Item -Path (Join-Path $seedSrc '*') -Destination $seedDst -Recurse -Force -ErrorAction Stop
-            Clear-DPReadOnly -Path $seedDst
-            Add-DPLog -Message ('已把 persona\seed 复制到：' + $seedDst)
+            [void](Clear-DPReadOnly -Path $seedDst)
+            Add-DPLog -Message ('persona\seed copied to: ' + $seedDst)
         } catch {
-            Add-DPLog -Message ('persona\seed 复制失败（不阻塞启动）：' + $_.Exception.Message) -Level '警告'
+            Add-DPLog -Message ('persona\seed copy failed (launch continues): ' + $_.Exception.Message) -Level 'Warn'
         }
     }
 
-    # 3) AGENTS.md：只在缺失时写，之后不覆盖（保护用户改动）
+    # 3) AGENTS.md: write only when missing, never overwrite (protects user edits)
     $agentsSrc = Join-Path $PersonaDir 'AGENTS.md'
     $agentsDst = Join-Path $HomeDir 'AGENTS.md'
     if ((Test-Path -LiteralPath $agentsSrc -PathType Leaf) -and -not (Test-Path -LiteralPath $agentsDst)) {
         try {
             Copy-Item -LiteralPath $agentsSrc -Destination $agentsDst -Force -ErrorAction Stop
-            Clear-DPReadOnly -Path $agentsDst
-            Add-DPLog -Message ('已写入 AGENTS.md：' + $agentsDst)
+            [void](Clear-DPReadOnly -Path $agentsDst)
+            Add-DPLog -Message ('AGENTS.md written: ' + $agentsDst)
         } catch {
-            Add-DPLog -Message ('AGENTS.md 复制失败（不阻塞启动）：' + $_.Exception.Message) -Level '警告'
+            Add-DPLog -Message ('AGENTS.md copy failed (launch continues): ' + $_.Exception.Message) -Level 'Warn'
         }
     }
 }
 
 if ($firstBoot) {
-    Add-DPLog -Message '首次启动：准备 profile、凭据、seed。' -Level '提示'
+    Add-DPLog -Message 'First run: preparing profile, credentials, seed.' -Level 'Notice'
 
     $payloadCandidates = @(
         (Join-Path $disc '.discpersona\payload\profile-web'),
@@ -665,7 +665,7 @@ if ($firstBoot) {
     }
 
     if ($payloadDir) {
-        Add-DPLog -Message ('使用光盘预打包 profile：' + $payloadDir)
+        Add-DPLog -Message ('Using the pre-packaged profile from the disc: ' + $payloadDir)
         try {
             $parent = Split-Path -Parent $profileDir
             if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
@@ -673,14 +673,14 @@ if ($firstBoot) {
             Copy-Item -LiteralPath $payloadDir -Destination $profileDir -Recurse -Force -ErrorAction Stop
         } catch {
             Stop-DiscPersona -Code 'E06' `
-                -Message ('预打包 profile 复制失败：' + $profileDir) `
-                -Hint '请检查磁盘空间和文件夹权限后重试。'
+                -Message ('Pre-packaged profile copy failed: ' + $profileDir) `
+                -Hint 'Check free disk space and folder permissions, then retry.'
         }
-        # 光盘上的文件带 ReadOnly，复制过来会让 dsh 写设置时 EPERM（临时文件 rename 覆盖 cordis.patch.yml）
-        Add-DPLog -Message ('清除预打包 profile 的只读属性：' + (Clear-DPReadOnly -Path $profileDir) + ' 个文件')
+        # Files on the disc are ReadOnly; copied over, they make dsh hit EPERM when writing settings (a temp file renamed over cordis.patch.yml)
+        Add-DPLog -Message ('Cleared the read-only attribute on the pre-packaged profile: ' + (Clear-DPReadOnly -Path $profileDir) + ' files')
         $payloadUsedNow = $true
 
-        # payload.json：记录装了哪些插件、用哪个 dsh 版本打的包（解析失败不阻塞）
+        # payload.json: records which plugins are installed and which dsh version packaged them (a parse failure does not block)
         $payloadManifest = Join-Path $payloadDir 'payload.json'
         if (Test-Path -LiteralPath $payloadManifest -PathType Leaf) {
             try {
@@ -689,9 +689,9 @@ if ($firstBoot) {
                 foreach ($pl in @($pm.plugins)) { if ($pl) { $names += ([string]$pl.name + ' ' + [string]$pl.version) } }
                 $payloadPluginNames = $names
                 if ($pm.PSObject.Properties['preset'] -and $pm.preset) { $payloadPresetName = [string]$pm.preset }
-                Add-DPLog -Message ('插件载荷：' + ($names -join '、') + '（打包时 dsh ' + [string]$pm.dshVersion + '，预设 ' + $payloadPresetName + '）')
+                Add-DPLog -Message ('Plugin payload: ' + ($names -join ', ') + ' (packaged with dsh ' + [string]$pm.dshVersion + ', preset ' + $payloadPresetName + ')')
             } catch {
-                Add-DPLog -Message ('payload.json 解析失败（不阻塞启动）：' + $_.Exception.Message) -Level '警告'
+                Add-DPLog -Message ('Cannot parse payload.json (launch continues): ' + $_.Exception.Message) -Level 'Warn'
             }
         }
     }
@@ -699,58 +699,58 @@ if ($firstBoot) {
     $dshExe = Resolve-DshExecutable -Explicit $DshPath
     if (-not $dshExe) {
         Stop-DiscPersona -Code 'E04' `
-            -Message '这台电脑上找不到 dsh（DeepSeek Harness）。' `
-            -Hint '请先安装 DeepSeek Harness，或设置环境变量 DISCPERSONA_DSH 指向 dsh.cmd 的完整路径。'
+            -Message 'Cannot find dsh (DeepSeek Harness) on this machine.' `
+            -Hint 'Install DeepSeek Harness first, or set DISCPERSONA_DSH to the full path of dsh.cmd.'
     }
-    Add-DPLog -Message ('dsh：' + $dshExe)
+    Add-DPLog -Message ('dsh: ' + $dshExe)
 
     if (-not $payloadDir) {
         $ok = Invoke-DPProfileBootstrap -DshPath $dshExe -HomeDir $homeDir -WorkspaceDir $workspaceDir -LogsDir $logsDir -Stamp $stamp
         if (-not $ok) {
             Stop-DiscPersona -Code 'E09' `
-                -Message '首次启动时没能生成 dsh 的 web profile。' `
-                -Hint '请确认 dsh 能单独运行（在终端执行 dsh --profile web --port 0 --no-open），或换一张带预打包 profile 的光盘。'
+                -Message 'The dsh web profile could not be generated on the first run.' `
+                -Hint 'Make sure dsh runs on its own (dsh --profile web --port 0 --no-open in a terminal), or use a disc with a pre-packaged profile.'
         }
     }
 
-    Initialize-DPPersonaAssets -HomeDir $homeDir -PersonaDir $personaDir -WorkspaceDir $workspaceDir
+    [void](Initialize-DPPersonaAssets -HomeDir $homeDir -PersonaDir $personaDir -WorkspaceDir $workspaceDir)
 } else {
-    Add-DPLog -Message 'profile 已存在，跳过首启准备。'
-    # 但凭据 / seed / AGENTS 仍然可能缺（首启中途失败过），这里补课
-    Initialize-DPPersonaAssets -HomeDir $homeDir -PersonaDir $personaDir -WorkspaceDir $workspaceDir
+    Add-DPLog -Message 'Profile already exists, skipping first-run preparation.'
+    # But credentials / seed / AGENTS may still be missing (a first run that failed midway), so catch up here
+    [void](Initialize-DPPersonaAssets -HomeDir $homeDir -PersonaDir $personaDir -WorkspaceDir $workspaceDir)
 }
 
-# 人设卡：每次启动都同步（房间里的 persona.yml 改了，卡片也要跟着变）
+# Persona card: synced on every launch (if the room persona.yml changes, the card follows)
 [void](Sync-DPPersonaCard -HomeDir $homeDir -Name $personaName -Text $personaDoc.SystemPrompt)
 
-# 工作区：把默认工作区钉在房间内，别和主实例共用「文档」下的那个
-[void](Sync-DPWorkspace -HomeDir $homeDir -WorkspaceDir $workspaceDir -Title ($personaName + '的房间'))
+# Workspace: pin the default workspace inside the room so it never shares the one under Documents
+[void](Sync-DPWorkspace -HomeDir $homeDir -WorkspaceDir $workspaceDir -Title ($personaName + "'s room"))
 
-# ---------------------------------------------------------------- 7. 生成 patch
+# ---------------------------------------------------------------- 7. generate the patch
 $personaPatch = Join-Path $homeDir 'persona.patch.yml'
 try {
     Write-DPTextFile -Path $personaPatch -Text (New-DPPersonaPatchText -SystemPrompt $personaDoc.SystemPrompt)
 } catch {
     Stop-DiscPersona -Code 'E06' `
-        -Message ('人设 patch 写不进去：' + $personaPatch) `
-        -Hint '请检查磁盘空间和文件夹权限后重试。'
+        -Message ('Cannot write the persona patch: ' + $personaPatch) `
+        -Hint 'Check free disk space and folder permissions, then retry.'
 }
-Add-DPLog -Message ('已生成 patch：' + $personaPatch)
+Add-DPLog -Message ('Patch generated: ' + $personaPatch)
 
 $patchArgs = New-Object System.Collections.ArrayList
 $userPatch = Join-Path $homeDir 'user.patch.yml'
 if (Test-Path -LiteralPath $userPatch -PathType Leaf) {
     [void]$patchArgs.Add($userPatch)
-    Add-DPLog -Message ('发现 user.patch.yml，先于 persona 应用：' + $userPatch)
+    Add-DPLog -Message ('Found user.patch.yml; it is applied before the persona: ' + $userPatch)
 }
 [void]$patchArgs.Add($personaPatch)
 
-# ---------------------------------------------------------------- 8. 启动
+# ---------------------------------------------------------------- 8. launch
 $dshExecutable = Resolve-DshExecutable -Explicit $DshPath
 if (-not $dshExecutable) {
     Stop-DiscPersona -Code 'E04' `
-        -Message '这台电脑上找不到 dsh（DeepSeek Harness）。' `
-        -Hint '请先安装 DeepSeek Harness，或设置环境变量 DISCPERSONA_DSH 指向 dsh.cmd 的完整路径。'
+        -Message 'Cannot find dsh (DeepSeek Harness) on this machine.' `
+        -Hint 'Install DeepSeek Harness first, or set DISCPERSONA_DSH to the full path of dsh.cmd.'
 }
 
 $lastPort = 0
@@ -766,8 +766,8 @@ $readyUrl = $null
 $usedPort = 0
 $attempts = New-Object System.Collections.ArrayList
 
-# 插件载荷（.discpersona\payload）如果起不来，就删掉、退回纯人设，再试一次。
-# 这样一张盘上的插件坏了，也不会让这个孩子彻底打不开。
+# If the plugin payload (.discpersona\payload) fails to start, delete it, fall back to persona only, and retry once.
+# That way a broken plugin on a disc never makes the persona completely unusable.
 $payloadRetryLeft = 0
 if ($payloadUsedNow) { $payloadRetryLeft = 1 }
 
@@ -775,9 +775,9 @@ for ($pass = 1; $pass -le 2; $pass++) {
     $portsToTry = New-Object System.Collections.ArrayList
     if ($lastPort -gt 0 -and -not (Test-DPPortListening -Port $lastPort)) {
         [void]$portsToTry.Add($lastPort)
-        Add-DPLog -Message ('优先使用上次的端口 ' + $lastPort + '。')
+        Add-DPLog -Message ('Reusing the previous port ' + $lastPort + '.')
     } elseif ($lastPort -gt 0) {
-        Add-DPLog -Message ('上次的端口 ' + $lastPort + ' 已被占用，改用自动分配。') -Level '警告'
+        Add-DPLog -Message ('The previous port ' + $lastPort + ' is in use, switching to automatic assignment.') -Level 'Warn'
     }
     [void]$portsToTry.Add(0)
 
@@ -789,42 +789,42 @@ for ($pass = 1; $pass -le 2; $pass++) {
             $started = Start-DshInstance -DshPath $dshExecutable -HomeDir $homeDir -WorkingDir $workspaceDir `
                 -Port $port -Patches @($patchArgs) -StdoutPath $stdout -StderrPath $stderr
         } catch {
-            Add-DPLog -Message ('启动 dsh 失败（端口 ' + $port + '）：' + $_.Exception.Message) -Level '错误'
+            Add-DPLog -Message ('Failed to start dsh (port ' + $port + '): ' + $_.Exception.Message) -Level 'Error'
             [void]$attempts.Add($port)
             continue
         }
         $usedPort = $port
-        Add-DPLog -Message ('已拉起 dsh（端口 ' + $port + '，包装进程 PID ' + $started.Process.Id + '，等待最多 ' + $StartTimeoutSec + ' 秒）。')
+        Add-DPLog -Message ('dsh started (port ' + $port + ', wrapper PID ' + $started.Process.Id + ', waiting up to ' + $StartTimeoutSec + ' s).')
         $ready = Wait-DshUrl -Instance $started -TimeoutSec $StartTimeoutSec
         if ($ready.Url) {
             $readyUrl = $ready.Url
             break
         }
-        Add-DPLog -Message ('本次没有就绪（端口 ' + $port + '，进程已退出=' + $ready.Exited + '）。') -Level '警告'
+        Add-DPLog -Message ('Not ready this time (port ' + $port + ', process exited=' + $ready.Exited + ').') -Level 'Warn'
         if ($started.Process -and -not $started.Process.HasExited) { Stop-DPProcessTree -ProcessId $started.Process.Id }
         [void]$attempts.Add($port)
-        if ($port -ne 0) { Add-DPLog -Message '回退到自动分配端口重试一次。' -Level '警告' }
+        if ($port -ne 0) { Add-DPLog -Message 'Retrying once with an automatically assigned port.' -Level 'Warn' }
         else { break }
     }
 
     if ($readyUrl) { break }
     if ($payloadRetryLeft -le 0) { break }
 
-    # 走到这里：带着插件载荷没起来 -> 丢弃载荷，纯人设重试
+    # Reaching here means it did not start with the plugin payload: drop the payload and retry with the persona only
     $payloadRetryLeft = 0
-    Add-DPLog -Message '带插件载荷启动失败，丢弃预打包 profile，回退纯人设重试一次。' -Level '警告'
+    Add-DPLog -Message 'Start failed with the plugin payload; discarding the pre-packaged profile and retrying with the persona only.' -Level 'Warn'
     Write-DPLine ''
-    Write-DPLine '  插件载荷没能启动，正在退回纯人设重试……' 'Yellow'
+    Write-DPLine '  The plugin payload did not start; retrying with the persona only...' 'Yellow'
     try {
         if (Test-Path -LiteralPath $profileDir) { Remove-Item -LiteralPath $profileDir -Recurse -Force -ErrorAction Stop }
     } catch {
-        Add-DPLog -Message ('删除预打包 profile 失败：' + $_.Exception.Message) -Level '错误'
+        Add-DPLog -Message ('Failed to delete the pre-packaged profile: ' + $_.Exception.Message) -Level 'Error'
         break
     }
     $payloadUsedNow = $false
     $okFallback = Invoke-DPProfileBootstrap -DshPath $dshExecutable -HomeDir $homeDir -WorkspaceDir $workspaceDir -LogsDir $logsDir -Stamp (Format-DPFileStamp)
     if (-not $okFallback) {
-        Add-DPLog -Message '回退时冷启动也没能生成 profile。' -Level '错误'
+        Add-DPLog -Message 'The fallback cold start could not generate a profile either.' -Level 'Error'
         break
     }
 }
@@ -837,23 +837,23 @@ if (-not $readyUrl) {
     $errTail = @()
     try { $errTail = Get-DPLogTail -Path $started.Stderr -Lines 15 } catch { }
     Write-DPLine ''
-    Write-DPLine '  [E09] dsh 在限定时间内没有启动完成。' 'Red'
-    Write-DPLine ('  怎么办：请重试一次；仍然失败就把日志发给维护者：' + $script:DPLogPath) 'Yellow'
+    Write-DPLine '  ERROR E09: dsh did not finish starting within the time limit.' 'Red'
+    Write-DPLine ('  What to do: retry once; if it still fails, send the log to the maintainer: ' + $script:DPLogPath) 'Yellow'
     if ($tail.Count -gt 0) {
-        Write-DPLine '  —— dsh 输出最后 15 行 ——' 'DarkGray'
+        Write-DPLine '  -- last 15 lines of dsh output --' 'DarkGray'
         foreach ($line in $tail) { Write-DPLine ('  | ' + $line) 'DarkGray' }
     }
     if ($errTail.Count -gt 0) {
-        Write-DPLine '  —— stderr 最后若干行 ——' 'DarkGray'
+        Write-DPLine '  -- last lines of stderr --' 'DarkGray'
         foreach ($line in $errTail) { Write-DPLine ('  | ' + $line) 'DarkGray' }
     }
-    Write-DPLine '  错误码：E09（启动超时）' 'DarkGray'
+    Write-DPLine '  Error code: E09 (startup timed out)' 'DarkGray'
     Write-DPLine ''
-    Add-DPLog -Message '启动超时，已终止进程。' -Level '错误'
+    Add-DPLog -Message 'Startup timed out; the process was terminated.' -Level 'Error'
     exit 1
 }
 
-# ---------------------------------------------------------------- 9. 记录状态 / 锁
+# ---------------------------------------------------------------- 9. record state / lock
 $now = Format-DPTime
 $state = [ordered]@{
     discID         = $discID
@@ -882,35 +882,35 @@ if ($portMatch.Success) { $state.lastPort = [int]$portMatch.Groups[1].Value }
 try {
     Write-DPTextFile -Path $statePath -Text ($state | ConvertTo-Json -Depth 4)
 } catch {
-    Add-DPLog -Message ('state.json 写入失败（不阻塞）：' + $_.Exception.Message) -Level '警告'
+    Add-DPLog -Message ('Failed to write state.json (launch continues): ' + $_.Exception.Message) -Level 'Warn'
 }
 
 $startTicks = Get-DPProcessStartTicks -ProcessId $started.Process.Id
 Write-DPLock -Path $lockPath -ProcessId $started.Process.Id -StartTicks $startTicks -StartedAt $now -Port $state.lastPort
-Add-DPLog -Message ('已记录锁：PID ' + $started.Process.Id + '，端口 ' + $state.lastPort)
+Add-DPLog -Message ('Lock recorded: PID ' + $started.Process.Id + ', port ' + $state.lastPort)
 
-# ---------------------------------------------------------------- 10. 收尾输出
+# ---------------------------------------------------------------- 10. final output
 if (-not $NoBrowser) { Open-DPUrl -Url $readyUrl | Out-Null }
 
 Write-DPLine ''
-Write-DPLine '  DiscPersona 已启动' 'Cyan'
+Write-DPLine '  diskLIFE started' 'Cyan'
 $runNote = ''
-if (-not $firstBoot) { $runNote = ' · 第 ' + $state.bootCount + ' 次运行' }
-Write-DPLine ('  人格：' + $personaName + '（v' + $personaVersion + '）' + $runNote)
-Write-DPLine ('  地址：' + $readyUrl)
-Write-DPLine ('  房间：' + $personaRoot)
-Write-DPLine ('  日志：' + $script:DPLogPath) 'DarkGray'
+if (-not $firstBoot) { $runNote = ' - run #' + $state.bootCount }
+Write-DPLine ('  Persona: ' + $personaName + ' (v' + $personaVersion + ')' + $runNote)
+Write-DPLine ('  URL: ' + $readyUrl)
+Write-DPLine ('  Room: ' + $personaRoot)
+Write-DPLine ('  Log: ' + $script:DPLogPath) 'DarkGray'
 Write-DPLine ''
-Add-DPLog -Message ('启动完成：' + $readyUrl + '（第 ' + $state.bootCount + ' 次运行）')
+Add-DPLog -Message ('Launch complete: ' + $readyUrl + ' (run #' + $state.bootCount + ')')
 
-# 交互式窗口（双击 start.cmd）里等用户按键；输出被重定向（脚本 / 自动化）时直接返回，避免挂死
+# In an interactive window (double-clicked start.cmd) wait for a key; when output is redirected (script / automation) return at once so nothing hangs
 $interactive = $true
 try {
     if ([Console]::IsOutputRedirected -or [Console]::IsInputRedirected) { $interactive = $false }
 } catch { $interactive = $false }
 
 if (-not $NoWait -and $interactive) {
-    Write-DPLine '  按任意键关闭这个窗口；关掉窗口不会停止实例，实例仍在后台运行。' 'DarkGray'
+    Write-DPLine '  Press any key to close this window; closing it does not stop the instance, which keeps running in the background.' 'DarkGray'
     try {
         [void]$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
     } catch {

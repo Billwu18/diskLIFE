@@ -1,13 +1,13 @@
 ﻿#requires -Version 5.1
 <#
-  DiscPersona 一键刻录（IMAPI2）
-  用法：
+  DiscPersona one-click burn (IMAPI2)
+  Usage:
     powershell -NoProfile -ExecutionPolicy Bypass -File tools\Burn-Iso.ps1 -ListDrives
     powershell -NoProfile -ExecutionPolicy Bypass -File tools\Burn-Iso.ps1 -IsoPath build\aris-al1s.iso -DriveLetter F
     powershell -NoProfile -ExecutionPolicy Bypass -File tools\Burn-Iso.ps1 -IsoPath build\aris-al1s.iso -DriveLetter F -TestOnly
 
-  成功最后一行：BURN_OK <drive> <bytes> bytes <seconds>s
-  失败最后一行：BURN_FAIL <Bxx> <中文原因>
+  Last line on success: BURN_OK <drive> <bytes> bytes <seconds>s
+  Last line on failure: BURN_FAIL <Bxx> <reason>
 #>
 [CmdletBinding()]
 param(
@@ -25,7 +25,7 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 $script:StartedAt = Get-Date
 $script:MediaNames = @{
-    0 = '未知'; 1 = 'CD-ROM'; 2 = 'CD-R'; 3 = 'CD-RW'; 4 = 'DVD-ROM'; 5 = 'DVD-RAM'
+    0 = 'Unknown'; 1 = 'CD-ROM'; 2 = 'CD-R'; 3 = 'CD-RW'; 4 = 'DVD-ROM'; 5 = 'DVD-RAM'
     6 = 'DVD+R'; 7 = 'DVD+RW'; 8 = 'DVD-R'; 9 = 'DVD-RW'; 10 = 'DVD+R DL'
     11 = 'DVD-R DL'; 12 = 'DVD+RW DL'; 13 = 'BD-ROM'; 14 = 'BD-R'; 15 = 'BD-R'
     16 = 'BD-RE'; 17 = 'HD DVD-R'; 18 = 'HD DVD-RW'; 19 = 'HD DVD-RAM'
@@ -44,7 +44,7 @@ function Write-Step {
 function Get-MediaTypeName {
     param([int]$Type)
     if ($script:MediaNames.ContainsKey($Type)) { return [string]$script:MediaNames[$Type] }
-    return ('未知(' + $Type + ')')
+    return ('Unknown(' + $Type + ')')
 }
 
 function Get-MediaTotalSectors {
@@ -56,8 +56,8 @@ function Get-MediaTotalSectors {
 function Fail-Burn {
     param([string]$Code, [string]$Reason, [string]$Hint)
     Write-Host ''
-    Write-Host ('  [失败] ' + $Reason) -ForegroundColor Red
-    if ($Hint) { Write-Host ('  怎么办：' + $Hint) -ForegroundColor Yellow }
+    Write-Host ('  [failed] ' + $Reason) -ForegroundColor Red
+    if ($Hint) { Write-Host ('  How to fix: ' + $Hint) -ForegroundColor Yellow }
     Write-Host ''
     Write-Host ('BURN_FAIL ' + $Code + ' ' + $Reason)
     exit 1
@@ -68,9 +68,9 @@ function Complete-Burn {
     if ($Eject -and $Recorder) {
         try {
             $Recorder.EjectMedia()
-            Write-Step '已弹出光盘。'
+            Write-Step 'Disc ejected.'
         } catch {
-            Write-Step ('弹出光盘失败（不影响刻录结果）：' + $_.Exception.Message) 'Yellow'
+            Write-Step ('Eject failed (does not affect the burn result): ' + $_.Exception.Message) 'Yellow'
         }
     }
     $seconds = [Math]::Round(((Get-Date) - $script:StartedAt).TotalSeconds, 1)
@@ -107,7 +107,7 @@ function Get-DriveLetters {
         $s = ([string]$p).TrimEnd('\')
         if ($s -match '^[A-Za-z]:$') { [void]$letters.Add($s.ToUpperInvariant()) }
     }
-    if ($letters.Count -eq 0) { return '(无盘符)' }
+    if ($letters.Count -eq 0) { return '(no drive letter)' }
     return ($letters -join ',')
 }
 
@@ -117,7 +117,7 @@ function Get-MediaInfo {
         RecorderSupported = $true
         MediaSupported    = $true
         MediaType         = 0
-        MediaName         = '未知'
+        MediaName         = 'Unknown'
         Blank             = $false
         FreeSectors       = -1
     }
@@ -214,14 +214,14 @@ public static class DiscPersonaIsoStream
     try {
         Add-Type -TypeDefinition $code -Language CSharp -ErrorAction Stop
     } catch {
-        Fail-Burn 'B06' ('加载文件流组件失败：' + $_.Exception.Message) '请确认系统 shlwapi.dll 正常；重启后再试。'
+        Fail-Burn 'B06' ('Failed to load the file-stream component: ' + $_.Exception.Message) 'Check that shlwapi.dll on this system is intact, reboot, then try again.'
     }
 }
 
-# ---------------------------------------------------------------- 列出光驱
+# ---------------------------------------------------------------- list drives
 if ($ListDrives) {
     Write-Host ''
-    Write-Host '  本机光驱：' -ForegroundColor Cyan
+    Write-Host '  Drives on this machine:' -ForegroundColor Cyan
     $recorders = Get-DiscRecorders
     $n = 0
     foreach ($item in $recorders) {
@@ -232,59 +232,59 @@ if ($ListDrives) {
         try {
             $model = (([string]$item.Recorder.VendorId) + ' ' + ([string]$item.Recorder.ProductId)).Trim()
             $model = [regex]::Replace($model, '\s+', ' ')
-        } catch { $model = '(型号未知)' }
+        } catch { $model = '(model unknown)' }
         $total = Get-MediaTotalSectors -Type $info.MediaType
-        $capacityText = '总扇区=未知'
+        $capacityText = 'total sectors=unknown'
         if ($total -gt 0) {
-            $capacityText = '总扇区=' + [string]$total + '（≈' + [Math]::Round($total * 2048 / 1MB, 1) + ' MiB）'
+            $capacityText = 'total sectors=' + [string]$total + ' (approx. ' + [Math]::Round($total * 2048 / 1MB, 1) + ' MiB)'
         } else {
             try {
                 $wmiSize = [long](Get-WmiObject -Class Win32_CDROMDrive -Filter ('Drive=''' + $drive + '''') -ErrorAction Stop).Size
                 if ($wmiSize -gt 0) {
                     $used = [long]($wmiSize / 2048)
-                    $capacityText = '总扇区=未知  已用≈' + [string]$used + ' 扇区（≈' + [Math]::Round($wmiSize / 1MB, 2) + ' MiB）'
+                    $capacityText = 'total sectors=unknown  used approx. ' + [string]$used + ' sectors (approx. ' + [Math]::Round($wmiSize / 1MB, 2) + ' MiB)'
                 }
             } catch { }
         }
-        $freeText = '未知'
+        $freeText = 'unknown'
         if ($info.FreeSectors -ge 0) { $freeText = [string]$info.FreeSectors }
-        $blankText = '未知'
+        $blankText = 'unknown'
         if ($info.MediaType -ne 0) {
-            if ($info.Blank) { $blankText = '是' } else { $blankText = '否' }
+            if ($info.Blank) { $blankText = 'yes' } else { $blankText = 'no' }
         }
-        Write-Host ('  ' + $drive + '  ' + $model + '  介质=' + $info.MediaName + '  空白=' + $blankText + '  ' + $capacityText + '  剩余扇区=' + $freeText)
-        if (-not $info.RecorderSupported) { Write-Host '        （该设备不支持刻录）' -ForegroundColor Yellow }
+        Write-Host ('  ' + $drive + '  ' + $model + '  media=' + $info.MediaName + '  blank=' + $blankText + '  ' + $capacityText + '  free sectors=' + $freeText)
+        if (-not $info.RecorderSupported) { Write-Host '        (this device cannot burn)' -ForegroundColor Yellow }
         [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($item.Recorder)
     }
     if ($n -eq 0) {
-        Write-Host '  （没有找到任何光驱）' -ForegroundColor Yellow
+        Write-Host '  (no drives found)' -ForegroundColor Yellow
     }
     Write-Host ''
     Complete-Burn -Drive 'LIST' -Bytes 0 -Recorder $null
 }
 
-# ---------------------------------------------------------------- 参数检查
+# ---------------------------------------------------------------- argument checks
 if ([string]::IsNullOrWhiteSpace($IsoPath)) {
-    Fail-Burn 'B05' '没有指定 ISO 文件（-IsoPath）。' '用法：-IsoPath build\aris-al1s.iso -DriveLetter F'
+    Fail-Burn 'B05' 'No ISO file given (-IsoPath).' 'Usage: -IsoPath build\aris-al1s.iso -DriveLetter F'
 }
 if ([string]::IsNullOrWhiteSpace($DriveLetter)) {
-    Fail-Burn 'B01' '没有指定光驱盘符（-DriveLetter）。' '用法：-DriveLetter F 或 -DriveLetter F:'
+    Fail-Burn 'B01' 'No drive letter given (-DriveLetter).' 'Usage: -DriveLetter F or -DriveLetter F:'
 }
 
 $isoFull = $null
 try { $isoFull = (Resolve-Path -LiteralPath $IsoPath -ErrorAction Stop).ProviderPath } catch { $isoFull = $null }
 if (-not $isoFull -or -not (Test-Path -LiteralPath $isoFull -PathType Leaf)) {
-    Fail-Burn 'B05' ('ISO 文件不存在：' + $IsoPath) '请先运行 tools\New-Disc.ps1 生成 ISO，或检查路径。'
+    Fail-Burn 'B05' ('ISO file not found: ' + $IsoPath) 'Run tools\New-Disc.ps1 to build the ISO first, or check the path.'
 }
 $isoInfo = Get-Item -LiteralPath $isoFull
 $isoSize = [long]$isoInfo.Length
 if ($isoSize -le 0) {
-    Fail-Burn 'B05' ('ISO 文件是 0 字节：' + $isoFull) '请重新生成 ISO 后再刻录。'
+    Fail-Burn 'B05' ('ISO file is 0 bytes: ' + $isoFull) 'Rebuild the ISO, then burn again.'
 }
 
 $target = Resolve-TargetDrive -Letter $DriveLetter
 if (-not $target) {
-    Fail-Burn 'B01' ('找不到光驱：' + $DriveLetter) '先运行 -ListDrives 看看本机有哪些光驱盘符。'
+    Fail-Burn 'B01' ('Drive not found: ' + $DriveLetter) 'Run -ListDrives to see which drive letters this machine has.'
 }
 $recorder = $target.Recorder
 $drive = $target.Drive
@@ -292,40 +292,40 @@ $drive = $target.Drive
 try {
     $info = Get-MediaInfo -Recorder $recorder
     if (-not $info.RecorderSupported) {
-        Fail-Burn 'B02' ('这个光驱不支持刻录：' + $drive) '换一个可刻录的 DVD/CD 刻录机，或检查驱动。'
+        Fail-Burn 'B02' ('This drive cannot burn: ' + $drive) 'Use a recordable DVD/CD writer, or check the driver.'
     }
     if ($info.MediaType -eq 0) {
-        Fail-Burn 'B03' ('光驱里没有介质：' + $drive) '请放入一张空白 CD-R / DVD-R。'
+        Fail-Burn 'B03' ('No media in the drive: ' + $drive) 'Insert a blank CD-R / DVD-R.'
     }
     if ($info.Blank) {
-        # 双保险：有些驱动对已终结的盘会误报「物理空白」，但有卷标就肯定不是空白盘。
+        # Belt and braces: some drivers report a finalized disc as 'physically blank', but a volume label proves it is not.
         try {
             $probe = Get-WmiObject -Class Win32_CDROMDrive -Filter ('Drive=''' + $drive + '''') -ErrorAction Stop
             if ($probe -and $probe.VolumeName) {
                 $info.Blank = $false
-                $info.MediaName = [string]$info.MediaName + '（有卷标 ' + [string]$probe.VolumeName + '）'
+                $info.MediaName = [string]$info.MediaName + ' (volume label ' + [string]$probe.VolumeName + ')'
             }
         } catch { }
     }
     if (-not $info.Blank) {
         if (-not $TestOnly) {
-            Fail-Burn 'B04' ('这张光盘上已经有内容了（' + $info.MediaName + '）：' + $drive) '请换一张空白光盘；只做链路检测可加 -TestOnly。'
+            Fail-Burn 'B04' ('This disc already has content (' + $info.MediaName + '): ' + $drive) 'Insert a blank disc; add -TestOnly to check the link only.'
         }
-        Write-Step ('注意：介质非空白（' + $info.MediaName + '），TestOnly 只验证链路，不会写入。') 'Yellow'
+        Write-Step ('Note: the media is not blank (' + $info.MediaName + '); TestOnly only checks the link and does not write.') 'Yellow'
     }
     if (-not $info.MediaSupported -and $info.Blank) {
-        Fail-Burn 'B03' ('光驱不支持这种介质：' + $drive) '换一张 CD-R / DVD-R 再试。'
+        Fail-Burn 'B03' ('The drive does not support this media: ' + $drive) 'Try another CD-R / DVD-R.'
     }
-    $blankText = '否'
-    if ($info.Blank) { $blankText = '是' }
-    Write-Step ('目标光驱：' + $drive + '  介质：' + $info.MediaName + '  空白：' + $blankText)
-    Write-Step ('ISO：' + $isoFull + '（' + $isoSize + ' 字节）')
+    $blankText = 'no'
+    if ($info.Blank) { $blankText = 'yes' }
+    Write-Step ('Target drive: ' + $drive + '  media: ' + $info.MediaName + '  blank: ' + $blankText)
+    Write-Step ('ISO: ' + $isoFull + ' (' + $isoSize + ' bytes)')
 
     $stream = $null
     try {
         $stream = [DiscPersonaIsoStream]::OpenRead($isoFull)
     } catch {
-        Fail-Burn 'B06' ('打开 ISO 文件流失败：' + $_.Exception.Message) '确认 ISO 没有被其他程序占用，且当前用户有读取权限。'
+        Fail-Burn 'B06' ('Failed to open the ISO file stream: ' + $_.Exception.Message) 'Check that no other program holds the ISO and that you can read it.'
     }
 
     $data = $null
@@ -338,9 +338,9 @@ try {
         $data.ClientName = 'DiscPersona'
         $data.ForceMediaToBeClosed = $true
         if ($TestOnly) {
-            Write-Step 'TestOnly：写会话已打开，链路正常，跳过实际写入。' 'Yellow'
+            Write-Step 'TestOnly: the write session opened, the link works, skipping the actual write.' 'Yellow'
         } else {
-            Write-Step ('开始写入（卷标 ' + $VolumeLabel + '）……')
+            Write-Step ('Starting to write (volume label ' + $VolumeLabel + ')…')
             try { $data.Write($stream) }
             catch { $writeFailed = $true; $writeError = [string]$_.Exception.Message }
         }
@@ -355,18 +355,18 @@ try {
 
     if ($writeFailed) {
         Close-MediaQuietly -Recorder $recorder
-        if (-not $writeError) { $writeError = '（COM 未给出文字说明，只有 HRESULT）' }
-        Fail-Burn 'B07' ('写入过程失败：' + $writeError) '换一张空白盘重试；若反复失败，检查光驱和盘片是否老化。'
+        if (-not $writeError) { $writeError = '(COM gave no text description, only an HRESULT)' }
+        Fail-Burn 'B07' ('Write failed: ' + $writeError) 'Try another blank disc; if it keeps failing, check the drive and the media for wear.'
     }
 
     if ($TestOnly) {
         Complete-Burn -Drive $drive -Bytes 0 -Recorder $recorder
     }
 
-    Write-Step ('写入完成，用时 ' + [Math]::Round($watch.Elapsed.TotalSeconds, 1) + ' 秒，正在回读校验……')
+    Write-Step ('Write complete in ' + [Math]::Round($watch.Elapsed.TotalSeconds, 1) + ' s; reading back for a check…')
     if (-not (Test-Written -Recorder $recorder)) {
         Close-MediaQuietly -Recorder $recorder
-        Fail-Burn 'B08' '写完后光盘仍显示为空白，写会话可能没有终结。' '换一张盘重试；若仍失败，不要使用这张盘。'
+        Fail-Burn 'B08' 'The disc still looks blank after writing; the write session may not have been closed.' 'Try another disc; if it still fails, do not use this one.'
     }
     Close-MediaQuietly -Recorder $recorder
 
@@ -375,8 +375,8 @@ try {
         $wmi = Get-WmiObject -Class Win32_CDROMDrive -Filter ('Drive=''' + $drive + '''') -ErrorAction Stop
         if ($wmi -and $wmi.VolumeName) { $volume = [string]$wmi.VolumeName }
     } catch { $volume = '' }
-    Write-Step ('回读校验：介质已非空白（' + $info.MediaName + '）')
-    if ($volume) { Write-Step ('回读卷标：' + $volume) }
+    Write-Step ('Read-back check: the media is no longer blank (' + $info.MediaName + ')')
+    if ($volume) { Write-Step ('Read-back volume label: ' + $volume) }
 
     Complete-Burn -Drive $drive -Bytes $isoSize -Recorder $recorder
 } finally {

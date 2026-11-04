@@ -1,6 +1,6 @@
-# seed（自测用）
+# seed (self-test fixture)
 
-这里的文件只用来证明「persona 子目录会被递归复制，并逐个进 manifest 哈希」。
+The files here only prove that the `persona` subdirectory is copied recursively and every file lands in the manifest hash.
 
-- `seed\README.md` 是唯一的种子文件。
-- 真实人设包可以在这里放开场白、记忆片段、初始 lore 等。
+- `seed\README.md` is the only seed file.
+- A real persona pack can put opening lines, memory fragments and initial lore here.

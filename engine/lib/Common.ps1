@@ -1,29 +1,29 @@
-﻿# DiscPersona 启动引擎 · 公共基础设施
-# 路径 / 输出编码 / 中文日志 / 错误码
-# 本文件由 engine\launch.ps1 点源加载，不单独执行。兼容 Windows PowerShell 5.1。
+﻿# diskLIFE launch engine - shared infrastructure
+# paths / output encoding / logging / error codes
+# Dot-sourced by engine\launch.ps1, never executed on its own. Compatible with Windows PowerShell 5.1.
 
-# 错误码表：代码 -> 一句话类别（详细文案在调用处给）
+# Error code table: code -> one-line category (the detailed text is supplied by the caller)
 $script:DPErrorCodes = [ordered]@{
-    E01 = '光盘不完整'
-    E02 = 'pad.bin 读不了'
-    E03 = '文件被改动过'
-    E04 = '找不到 dsh'
-    E05 = '环境不支持'
-    E06 = 'home 写不进去'
-    E07 = '凭据缺失'
-    E08 = '人设文件解析失败'
-    E09 = '启动超时'
-    E10 = '已在运行'
+    E01 = 'incomplete disc'
+    E02 = 'pad.bin cannot be read'
+    E03 = 'files were modified'
+    E04 = 'dsh not found'
+    E05 = 'unsupported environment'
+    E06 = 'home is not writable'
+    E07 = 'missing credentials'
+    E08 = 'persona file cannot be parsed'
+    E09 = 'startup timed out'
+    E10 = 'already running'
 }
 
-# 运行期状态（launch.ps1 会设置）
+# Runtime state (set by launch.ps1)
 $script:DPLogPath = $null
 $script:DPPersonaHome = $null
 
 $script:DPUtf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 function Initialize-DPConsole {
-    # PS 5.1 控制台默认按 ANSI 解码 UTF-8 脚本里的中文，必须显式改成 UTF-8
+    # PS 5.1 decodes non-ASCII text in a UTF-8 script as ANSI, so force UTF-8 explicitly
     try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
     try { $global:OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
     try { [Console]::InputEncoding = [System.Text.Encoding]::UTF8 } catch { }
@@ -45,12 +45,12 @@ function Format-DPFileStamp {
 
 function Add-DPLog {
     <#
-      写一行中文日志（始终写文件；控制台是否回声由 -Echo 决定）。
-      返回拼好的整行，便于调用方复用。
+      Write one log line (always to the file; whether it echoes to the console is up to -Echo).
+      Returns the assembled line so callers can reuse it.
     #>
     param(
         [Parameter(Mandatory = $true)][string]$Message,
-        [ValidateSet('信息', '提示', '警告', '错误')][string]$Level = '信息',
+        [ValidateSet('Info', 'Notice', 'Warn', 'Error')][string]$Level = 'Info',
         [switch]$Echo
     )
     $line = '[{0}] [{1}] {2}' -f (Format-DPTime), $Level, $Message
@@ -61,12 +61,12 @@ function Add-DPLog {
     }
     if ($Echo) {
         switch ($Level) {
-            '警告' { Write-Host $line -ForegroundColor Yellow }
-            '错误' { Write-Host $line -ForegroundColor Red }
+            'Warn' { Write-Host $line -ForegroundColor Yellow }
+            'Error' { Write-Host $line -ForegroundColor Red }
             default { Write-Host $line }
         }
     }
-    # 故意不返回值：调用方常把本函数当纯日志用，返回值会污染函数的返回值通道。
+    # Returns nothing on purpose: callers often use this purely for logging, and a return value would pollute theirs.
 }
 
 function Write-DPLine {
@@ -79,8 +79,8 @@ function Write-DPLine {
 
 function Stop-DiscPersona {
     <#
-      统一失败出口：中文一句话结论 + 「怎么办」一句 + 错误码，退出码 1。
-      所有错误都必须经过这里，保证口径一致。
+      Single failure exit: one-line conclusion + one "what to do" line + error code, exit code 1.
+      Every error must go through here so the wording stays consistent.
     #>
     param(
         [Parameter(Mandatory = $true)][string]$Code,
@@ -88,26 +88,26 @@ function Stop-DiscPersona {
         [string]$Hint
     )
     $kind = $script:DPErrorCodes[$Code]
-    if (-not $kind) { $kind = '未知错误' }
+    if (-not $kind) { $kind = 'unknown error' }
     if ($script:DPLogPath) {
         try {
-            [System.IO.File]::AppendAllText($script:DPLogPath, ('[{0}] [错误] {1} {2}' -f (Format-DPTime), $Code, $Message) + "`r`n", $script:DPUtf8NoBom)
+            [System.IO.File]::AppendAllText($script:DPLogPath, ('[{0}] [ERROR] {1} {2}' -f (Format-DPTime), $Code, $Message) + "`r`n", $script:DPUtf8NoBom)
             if ($Hint) {
-                [System.IO.File]::AppendAllText($script:DPLogPath, ('[{0}] [错误] 怎么办：{1}' -f (Format-DPTime), $Hint) + "`r`n", $script:DPUtf8NoBom)
+                [System.IO.File]::AppendAllText($script:DPLogPath, ('[{0}] [ERROR] What to do: {1}' -f (Format-DPTime), $Hint) + "`r`n", $script:DPUtf8NoBom)
             }
         } catch { }
     }
     Write-DPLine ''
-    Write-DPLine ('  [' + $Code + '] ' + $Message) 'Red'
-    if ($Hint) { Write-DPLine ('  怎么办：' + $Hint) 'Yellow' }
-    Write-DPLine ('  错误码：' + $Code + '（' + $kind + '）') 'DarkGray'
+    Write-DPLine ('  ERROR ' + $Code + ': ' + $Message) 'Red'
+    if ($Hint) { Write-DPLine ('  What to do: ' + $Hint) 'Yellow' }
+    Write-DPLine ('  Error code: ' + $Code + ' (' + $kind + ')') 'DarkGray'
     Write-DPLine ''
     exit 1
 }
 
 function Assert-DPPlatform {
     <#
-      E05：非 Windows 或 PowerShell < 5.1。
+      E05: not Windows, or PowerShell < 5.1.
     #>
     $v = $PSVersionTable.PSVersion
     $onWindows = $false
@@ -119,15 +119,15 @@ function Assert-DPPlatform {
     $tooOld = ($v.Major -lt 5) -or (($v.Major -eq 5) -and ($v.Minor -lt 1))
     if ((-not $onWindows) -or $tooOld) {
         Stop-DiscPersona -Code 'E05' `
-            -Message ('这个环境跑不了 DiscPersona：需要 Windows + PowerShell 5.1 以上（当前系统 ' + [System.Environment]::OSVersion.VersionString + '，PowerShell ' + $v.ToString() + '）。') `
-            -Hint '请换一台 Windows 10 / Windows 11 电脑，双击光盘根目录的 start.cmd 运行。'
+            -Message ('diskLIFE cannot run here: it needs Windows + PowerShell 5.1 or newer (current system ' + [System.Environment]::OSVersion.VersionString + ', PowerShell ' + $v.ToString() + ').') `
+            -Hint 'Use a Windows 10 / Windows 11 machine and double-click start.cmd in the disc root.'
     }
 }
 
 function Get-DPNormalizedPath {
     <#
-      把用户/start.cmd 传来的路径规范化：去首尾引号、转绝对路径、去掉末尾反斜杠。
-      失败返回 $null。
+      Normalize a path coming from the user/start.cmd: strip surrounding quotes, make it absolute, drop a trailing backslash.
+      Returns $null on failure.
     #>
     param([string]$Path)
     if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
@@ -147,7 +147,7 @@ function Get-DPNormalizedPath {
 
 function Test-DPDirectoryWritable {
     <#
-      创建目录并写一个探针文件验证真实可写（E06 用）。
+      Create the directory and write a probe file to prove it is really writable (used by E06).
     #>
     param([Parameter(Mandatory = $true)][string]$Path)
     try {
@@ -170,8 +170,8 @@ function Get-DPFileSha256 {
 
 function Test-DPProcessIdentity {
     <#
-      判断 pid（配合记录的进程启动时间）是否还活着。
-      PID 可能被系统复用，所以启动时间对不上就当作已退出。
+      Tell whether pid (with its recorded process start time) is still alive.
+      PIDs get reused, so a start time that does not match counts as exited.
     #>
     param(
         [int]$ProcessId,
@@ -216,7 +216,7 @@ function Open-DPUrl {
 
 function Read-DPTextFile {
     <#
-      严格按 UTF-8 读取（自动跳过 BOM），便于读中文 YAML / JSON。
+      Read strictly as UTF-8 (skipping a BOM automatically), so non-ASCII YAML / JSON reads correctly.
     #>
     param([Parameter(Mandatory = $true)][string]$Path)
     $bytes = [System.IO.File]::ReadAllBytes($Path)
@@ -229,13 +229,13 @@ function Read-DPTextFile {
 function Clear-DPReadOnly {
     <#
     .SYNOPSIS
-    清掉一棵树（或单个文件）的只读属性，返回清掉的数量。
+    Clear the read-only attribute across a tree (or one file); returns how many were cleared.
     .DESCRIPTION
-    光盘上的文件带 ReadOnly 属性，Copy-Item -Recurse 会把它一起复制过来。
-    之后 dsh 写设置（临时文件 rename 覆盖 cordis.patch.yml）就会 EPERM，
-    用户改房间里的人设也会被编辑器拒绝。所以凡是从盘上复制过来的东西都要清一遍。
-    注意：Get-ChildItem -Recurse 会连目录一起返回，而 DirectoryInfo 没有 IsReadOnly，
-    在 StrictMode 下访问会抛错并中断整个循环 —— 所以只取 -File，目录单独按 Attributes 判断。
+    Files on the disc carry the ReadOnly attribute, and Copy-Item -Recurse copies it along.
+    Afterwards dsh writing settings (a temp file renamed over cordis.patch.yml) hits EPERM,
+    and editing the room persona is refused by the editor. So everything copied from the disc is cleared.
+    Note: Get-ChildItem -Recurse returns directories too, and DirectoryInfo has no IsReadOnly;
+    under StrictMode that throws and aborts the whole loop, so take only -File and test directories via Attributes.
     #>
     param([Parameter(Mandatory=$true)][string]$Path)
     if (-not (Test-Path -LiteralPath $Path)) { return 0 }
@@ -255,7 +255,7 @@ function Clear-DPReadOnly {
 
 function Write-DPTextFile {
     <#
-      写 UTF-8（无 BOM）。YAML / JSON 一律无 BOM，避免解析器把 BOM 当内容。
+      Write UTF-8 (no BOM). YAML / JSON are always BOM-free so parsers do not read the BOM as content.
     #>
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -271,7 +271,7 @@ function Write-DPTextFile {
 
 function Get-DPLogTail {
     <#
-      取日志尾部若干行，用于 E09 展示。
+      Take the last lines of the log, used by the E09 report.
     #>
     param(
         [string]$Path,

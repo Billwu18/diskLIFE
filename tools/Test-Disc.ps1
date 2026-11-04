@@ -1,32 +1,32 @@
 ﻿<#
 .SYNOPSIS
-    对 New-Disc.ps1 生成的光盘目录树做静态校验（不启动 DSH、不联网）。
+    Static check of a disc tree produced by New-Disc.ps1 (does not start DSH, no network).
 
 .DESCRIPTION
-    逐项检查：
-      · 必需文件是否齐全（autorun.inf / start.cmd / README.txt / pad.bin /
-        .discpersona\manifest.json / persona\meta.json / persona\persona.yml）
-      · manifest.json 是否为 UTF-8 无 BOM、可解析、format=1、必填字段齐全
-      · manifest 里每个文件的 SHA-256 是否与磁盘一致（含缺失文件）
-      · 磁盘上有没有 manifest 之外的多余文件
-      · pad.bin 是否恰好 512 字节、魔数是否正确、时间戳字段是否为 ISO8601(UTC)
-      · manifest.discID 是否由 pad.bin 算出（前 16 位小写十六进制）
-      · persona\meta.json 的 discID 是否与 manifest 一致
-      · persona\persona.yml 是否含 system_prompt:
-      · start.cmd / autorun.inf 是否 CRLF（start.cmd 不应带 BOM）
-      · autorun.inf 是否含 open=start.cmd，icon 指向的文件是否存在
+    Checks, one by one:
+      - required files present (autorun.inf / start.cmd / README.txt / pad.bin /
+        .discpersona\manifest.json / persona\meta.json / persona\persona.yml)
+      - manifest.json is UTF-8 without BOM, parses, format=1, required fields present
+      - every SHA-256 in the manifest matches the file on disc (missing files included)
+      - the disc has no files beyond the manifest
+      - pad.bin is exactly 512 bytes, magic correct, timestamp field is ISO8601(UTC)
+      - manifest.discID is derived from pad.bin (first 16 lowercase hex chars)
+      - persona\meta.json discID matches the manifest
+      - persona\persona.yml contains system_prompt:
+      - start.cmd / autorun.inf use CRLF (start.cmd must not have a BOM)
+      - autorun.inf contains open=start.cmd and the file its icon points at exists
 
-    每项打印 ✓ / ✗，末尾给 PASS / FAIL 与退出码（PASS=0，FAIL=1）。
+    Each check prints a green check or a red cross; the run ends with PASS / FAIL and an exit code (PASS=0, FAIL=1).
 
 .PARAMETER Disc
-    光盘目录树的根（例如 D:\build\disc 或拷到硬盘的整盘副本）。
+    Root of the disc tree (e.g. D:\build\disc or a full copy of the disc on disk).
 
 .EXAMPLE
     .\Test-Disc.ps1 -Disc D:\build\disc
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true, HelpMessage = '光盘目录树根目录')]
+    [Parameter(Mandatory = $true, HelpMessage = 'Root of the disc tree')]
     [string]$Disc
 )
 
@@ -39,7 +39,7 @@ $script:FailCount = 0
 $script:Failures   = New-Object System.Collections.Generic.List[string]
 
 # ---------------------------------------------------------------------------
-# 小工具
+# Small helpers
 # ---------------------------------------------------------------------------
 function Resolve-FullPath([string]$Path) {
     return $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
@@ -65,7 +65,7 @@ function Add-Check([string]$Label, [bool]$Pass, [string]$Detail) {
         Write-Host "  ✓ $Label" -ForegroundColor Green
     } else {
         $script:FailCount++
-        if ($Detail) { [void]$script:Failures.Add("$Label —— $Detail") } else { [void]$script:Failures.Add($Label) }
+        if ($Detail) { [void]$script:Failures.Add("$Label - $Detail") } else { [void]$script:Failures.Add($Label) }
         Write-Host "  ✗ $Label" -ForegroundColor Red
         if ($Detail) { Write-Host "      $Detail" -ForegroundColor Yellow }
     }
@@ -76,41 +76,41 @@ function Add-NoteLine([string]$Text) {
 }
 
 function Test-Crlf([string]$Text, [ref]$Problem) {
-    if ($Text -match "[^`r]`n") { $Problem.Value = '存在裸 LF 行尾（应为 CRLF）'; return $false }
-    if ($Text -match "`r(?!`n)") { $Problem.Value = '存在裸 CR 行尾（应为 CRLF）'; return $false }
-    if ($Text -notmatch "`r`n") { $Problem.Value = '整份文件没有 CRLF 行尾'; return $false }
+    if ($Text -match "[^`r]`n") { $Problem.Value = 'found a bare LF line ending (expected CRLF)'; return $false }
+    if ($Text -match "`r(?!`n)") { $Problem.Value = 'found a bare CR line ending (expected CRLF)'; return $false }
+    if ($Text -notmatch "`r`n") { $Problem.Value = 'the whole file has no CRLF line endings'; return $false }
     $Problem.Value = ''
     return $true
 }
 
 function Get-RelPath([string]$Root, [string]$FullPath) {
     $r = $Root.TrimEnd('\')
-    if ($FullPath.Length -le $r.Length) { throw "无法计算相对路径：$FullPath" }
+    if ($FullPath.Length -le $r.Length) { throw "Cannot compute a relative path: $FullPath" }
     return $FullPath.Substring($r.Length).TrimStart('\').Replace('\', '/')
 }
 
 # ---------------------------------------------------------------------------
-# 起步
+# Start
 # ---------------------------------------------------------------------------
 $discPath = (Resolve-FullPath $Disc).TrimEnd('\')
 
 Write-Host ''
-Write-Host 'DiscPersona 光盘静态校验' -ForegroundColor White
-Write-Host "  目录：$discPath"
+Write-Host 'DiscPersona disc static check' -ForegroundColor White
+Write-Host "  Directory: $discPath"
 
 if (-not (Test-Path -LiteralPath $discPath -PathType Container)) {
     Write-Host ''
-    Write-Host "  ✗ 目录不存在或不是目录：$discPath" -ForegroundColor Red
+    Write-Host "  ✗ Directory missing or not a directory: $discPath" -ForegroundColor Red
     Write-Host ''
     Write-Host 'FAIL' -ForegroundColor Red
     exit 1
 }
 
 # ---------------------------------------------------------------------------
-# 1. 必需文件
+# 1. Required files
 # ---------------------------------------------------------------------------
 Write-Host ''
-Write-Host '[必需文件]' -ForegroundColor Cyan
+Write-Host '[required files]' -ForegroundColor Cyan
 
 $requiredFiles = @(
     'autorun.inf',
@@ -123,7 +123,7 @@ $requiredFiles = @(
 )
 foreach ($rel in $requiredFiles) {
     $full = Join-Path $discPath $rel
-    Add-Check "存在 $rel" (Test-Path -LiteralPath $full -PathType Leaf) '文件缺失'
+    Add-Check "exists: $rel" (Test-Path -LiteralPath $full -PathType Leaf) 'file missing'
 }
 
 # ---------------------------------------------------------------------------
@@ -139,106 +139,106 @@ $manifestUsable = $false
 if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
     $bytes = [System.IO.File]::ReadAllBytes($manifestPath)
     $hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
-    Add-Check 'manifest.json 是 UTF-8 无 BOM' (-not $hasBom) '检测到 UTF-8 BOM（规范要求无 BOM）'
+    Add-Check 'manifest.json is UTF-8 without BOM' (-not $hasBom) 'found a UTF-8 BOM (the spec requires none)'
 
     $text = Read-TextFile $manifestPath
 
-    # 缩进规范：2 空格、`": "` 分隔（Windows PowerShell 5.1 的 ConvertTo-Json 会写出 `":  "`）
+    # Indent style: 2 spaces, `": "` separator (Windows PowerShell 5.1 ConvertTo-Json writes `":  "`)
     $indentProblem = ''
     foreach ($ln in ($text -split "`r?`n")) {
         if ($ln.Trim().Length -eq 0) { continue }
-        if ($ln -match '^\s*"[^"\r\n]*":\s{2}') { $indentProblem = "冒号后不止一个空格：$($ln.Trim())"; break }
+        if ($ln -match '^\s*"[^"\r\n]*":\s{2}') { $indentProblem = "more than one space after a colon: $($ln.Trim())"; break }
         $lead = 0
         while ($lead -lt $ln.Length -and $ln[$lead] -eq ' ') { $lead++ }
-        if (($lead % 2) -ne 0) { $indentProblem = "缩进不是 2 的倍数：$($ln.Trim())"; break }
+        if (($lead % 2) -ne 0) { $indentProblem = "indent is not a multiple of 2: $($ln.Trim())"; break }
     }
-    Add-Check 'manifest.json 缩进 2 空格、冒号后一个空格' ([string]::IsNullOrEmpty($indentProblem)) $indentProblem
+    Add-Check 'manifest.json uses 2-space indent and one space after the colon' ([string]::IsNullOrEmpty($indentProblem)) $indentProblem
 
     try {
         $manifest = $text | ConvertFrom-Json
         $manifestUsable = $true
-        Add-Check 'manifest.json 可解析为 JSON' $true
+        Add-Check 'manifest.json parses as JSON' $true
     } catch {
-        Add-Check 'manifest.json 可解析为 JSON' $false $_.Exception.Message
+        Add-Check 'manifest.json parses as JSON' $false $_.Exception.Message
     }
 
     if ($manifestUsable) {
         $format = $manifest.format
-        Add-Check 'manifest.format = 1' ($format -eq 1) "实际：$format"
+        Add-Check 'manifest.format = 1' ($format -eq 1) "actual: $format"
 
         $missingFields = New-Object System.Collections.Generic.List[string]
         foreach ($f in @('discID', 'name', 'version', 'builtAt', 'engine')) {
             $v = $manifest.PSObject.Properties[$f]
             if ($null -eq $v -or [string]::IsNullOrWhiteSpace([string]$v.Value)) { $missingFields.Add($f) }
         }
-        Add-Check 'manifest 必填字段齐全（discID/name/version/builtAt/engine）' `
-            ($missingFields.Count -eq 0) ("缺：" + ($missingFields -join ', '))
+        Add-Check 'manifest has all required fields (discID/name/version/builtAt/engine)' `
+            ($missingFields.Count -eq 0) ("missing: " + ($missingFields -join ', '))
 
         $discIdText = [string]$manifest.discID
-        Add-Check 'manifest.discID 是 16 位小写十六进制' ($discIdText -cmatch '^[0-9a-f]{16}$') "实际：$discIdText"
+        Add-Check 'manifest.discID is 16 lowercase hex chars' ($discIdText -cmatch '^[0-9a-f]{16}$') "actual: $discIdText"
 
         $filesProp = $manifest.PSObject.Properties['files']
-        Add-Check 'manifest.files 是非空对象' `
+        Add-Check 'manifest.files is a non-empty object' `
             ($null -ne $filesProp -and $null -ne $filesProp.Value -and @($filesProp.Value.PSObject.Properties).Count -gt 0) `
-            'files 缺失或为空（至少应含 persona 文件）'
+            'files missing or empty (should at least contain the persona files)'
 
-        # pad.bin 是 discID 的唯一来源，必须在哈希表里，否则它被改掉也发现不了
+        # pad.bin is the only source of discID, so it must be in the hash table; otherwise edits go unnoticed
         $padEntry = $null
         if ($null -ne $filesProp -and $null -ne $filesProp.Value) {
             $padEntry = $filesProp.Value.PSObject.Properties['pad.bin']
         }
-        Add-Check 'manifest.files 含 pad.bin（改了 pad.bin 就该校验失败）' ($null -ne $padEntry) 'files 里没有 pad.bin'
+        Add-Check 'manifest.files contains pad.bin (editing pad.bin must fail this check)' ($null -ne $padEntry) 'files has no pad.bin'
     }
 } else {
-    Add-Check 'manifest.json 存在，可做后续校验' $false '文件缺失，跳过 manifest 检查'
+    Add-Check 'manifest.json exists so later checks can run' $false 'file missing, skipping the manifest checks'
 }
 
 # ---------------------------------------------------------------------------
 # 3. pad.bin / discID
 # ---------------------------------------------------------------------------
 Write-Host ''
-Write-Host '[pad.bin 与 discID]' -ForegroundColor Cyan
+Write-Host '[pad.bin and discID]' -ForegroundColor Cyan
 
 $padPath = Join-Path $discPath 'pad.bin'
 $discIDFromPad = $null
 
 if (Test-Path -LiteralPath $padPath -PathType Leaf) {
     $padBytes = [System.IO.File]::ReadAllBytes($padPath)
-    Add-Check 'pad.bin 恰好 512 字节' ($padBytes.Length -eq 512) "实际：$($padBytes.Length) 字节"
+    Add-Check 'pad.bin is exactly 512 bytes' ($padBytes.Length -eq 512) "actual: $($padBytes.Length) bytes"
 
     if ($padBytes.Length -ge 18) {
         $magic = [System.Text.Encoding]::ASCII.GetString($padBytes, 0, 18)
-        Add-Check 'pad.bin 魔数为 DISCPERSONA-PAD-V1' ($magic -ceq 'DISCPERSONA-PAD-V1') "实际：'$magic'"
+        Add-Check 'pad.bin magic is DISCPERSONA-PAD-V1' ($magic -ceq 'DISCPERSONA-PAD-V1') "actual: '$magic'"
     } else {
-        Add-Check 'pad.bin 魔数为 DISCPERSONA-PAD-V1' $false '文件太短，读不到魔数'
+        Add-Check 'pad.bin magic is DISCPERSONA-PAD-V1' $false 'file too short to read the magic'
     }
 
     if ($padBytes.Length -ge 96) {
         $stamp = [System.Text.Encoding]::ASCII.GetString($padBytes, 64, 32).Trim([char]0, [char]32)
-        Add-Check 'pad.bin 含 ISO8601(UTC) 生成时间' `
-            ($stamp -match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$') "读到：'$stamp'"
+        Add-Check 'pad.bin has an ISO8601(UTC) build time' `
+            ($stamp -match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$') "read: '$stamp'"
     } else {
-        Add-Check 'pad.bin 含 ISO8601(UTC) 生成时间' $false '文件太短，读不到时间戳'
+        Add-Check 'pad.bin has an ISO8601(UTC) build time' $false 'file too short to read the timestamp'
     }
 
     $padHash = (Get-FileHash -LiteralPath $padPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $discIDFromPad = $padHash.Substring(0, 16)
-    Add-NoteLine "由 pad.bin 算出的 discID：$discIDFromPad"
+    Add-NoteLine "discID computed from pad.bin: $discIDFromPad"
 
     $hashProp = if ($manifestUsable) { $manifest.PSObject.Properties['discID'] } else { $null }
     if ($hashProp) {
-        Add-Check 'manifest.discID 与 pad.bin 一致' `
+        Add-Check 'manifest.discID matches pad.bin' `
             ([string]$hashProp.Value -eq $discIDFromPad) `
             "manifest=$($hashProp.Value)  pad.bin=$discIDFromPad"
     } else {
-        Add-Check 'manifest.discID 与 pad.bin 一致' $false 'manifest 不可用，无法比对'
+        Add-Check 'manifest.discID matches pad.bin' $false 'manifest unusable, cannot compare'
     }
 } else {
-    Add-Check 'pad.bin 存在，可做后续校验' $false '文件缺失'
+    Add-Check 'pad.bin exists so later checks can run' $false 'file missing'
 }
 
 # ---------------------------------------------------------------------------
-# 4. persona 侧一致性
+# 4. persona-side consistency
 # ---------------------------------------------------------------------------
 Write-Host ''
 Write-Host '[persona]' -ForegroundColor Cyan
@@ -250,9 +250,9 @@ if (Test-Path -LiteralPath $metaPath -PathType Leaf) {
     try {
         $meta = (Read-TextFile $metaPath) | ConvertFrom-Json
         $metaOk = $true
-        Add-Check 'persona\meta.json 可解析为 JSON' $true
+        Add-Check 'persona\meta.json parses as JSON' $true
     } catch {
-        Add-Check 'persona\meta.json 可解析为 JSON' $false $_.Exception.Message
+        Add-Check 'persona\meta.json parses as JSON' $false $_.Exception.Message
     }
     if ($metaOk) {
         $metaMissing = New-Object System.Collections.Generic.List[string]
@@ -260,15 +260,15 @@ if (Test-Path -LiteralPath $metaPath -PathType Leaf) {
             $p = $meta.PSObject.Properties[$f]
             if ($null -eq $p -or [string]::IsNullOrWhiteSpace([string]$p.Value)) { $metaMissing.Add($f) }
         }
-        # 现役人设包用 personaVersion 记版本号，两种都认
+        # Current persona packs store the version in personaVersion; accept both
         $metaVer = [string]$meta.version
         if ([string]::IsNullOrWhiteSpace($metaVer)) { $metaVer = [string]$meta.personaVersion }
         if ([string]::IsNullOrWhiteSpace($metaVer)) { $metaMissing.Add('version/personaVersion') }
-        Add-Check 'persona\meta.json 含 name / version' ($metaMissing.Count -eq 0) ("缺：" + ($metaMissing -join ', '))
+        Add-Check 'persona\meta.json has name / version' ($metaMissing.Count -eq 0) ("missing: " + ($metaMissing -join ', '))
 
         $metaDisc = [string]$meta.discID
         if ($manifestUsable) {
-            Add-Check 'persona\meta.json 的 discID 与 manifest 一致' `
+            Add-Check 'persona\meta.json discID matches the manifest' `
                 ($metaDisc -eq [string]$manifest.discID) `
                 "meta=$metaDisc  manifest=$($manifest.discID)"
         }
@@ -278,16 +278,16 @@ if (Test-Path -LiteralPath $metaPath -PathType Leaf) {
 $ymlPath = Join-Path $discPath 'persona\persona.yml'
 if (Test-Path -LiteralPath $ymlPath -PathType Leaf) {
     $yml = Read-TextFile $ymlPath
-    Add-Check 'persona\persona.yml 含 system_prompt:' ($yml -match '(?m)system_prompt\s*:') '没有找到 system_prompt: 键'
+    Add-Check 'persona\persona.yml contains system_prompt:' ($yml -match '(?m)system_prompt\s*:') 'system_prompt: key not found'
 } else {
-    Add-Check 'persona\persona.yml 含 system_prompt:' $false '文件缺失'
+    Add-Check 'persona\persona.yml contains system_prompt:' $false 'file missing'
 }
 
 # ---------------------------------------------------------------------------
-# 5. 哈希与多余文件
+# 5. Hashes and extra files
 # ---------------------------------------------------------------------------
 Write-Host ''
-Write-Host '[文件完整性]' -ForegroundColor Cyan
+Write-Host '[file integrity]' -ForegroundColor Cyan
 
 $manifestFiles = $null
 if ($manifestUsable) {
@@ -303,11 +303,11 @@ if ($null -ne $manifestFiles) {
     $discFull = [System.IO.Path]::GetFullPath($discPath).TrimEnd('\') + '\'
     foreach ($entry in $entries) {
         $rel = [string]$entry.Name
-        # manifest 来自不可信介质：键必须是盘内相对路径，不许 .. 或绝对路径逃出盘根
+        # The manifest comes from untrusted media: keys must be relative disc paths, no .. or absolute escape
         $full = $null
         try { $full = [System.IO.Path]::GetFullPath((Join-Path $discPath ($rel.Replace('/', '\')))) } catch { $full = $null }
         if (-not $full -or -not $full.StartsWith($discFull, [System.StringComparison]::OrdinalIgnoreCase)) {
-            $bad.Add("$rel（非法路径，已跳过）")
+            $bad.Add("$rel (illegal path, skipped)")
             continue
         }
         if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
@@ -317,17 +317,17 @@ if ($null -ne $manifestFiles) {
         $actual = (Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash.ToLowerInvariant()
         $expected = ([string]$entry.Value).ToLowerInvariant()
         if ($actual -ne $expected) {
-            $bad.Add("$rel（期望 $expected，实际 $actual）")
+            $bad.Add("$rel (expected $expected, actual $actual)")
         }
     }
 
     $detail = @()
-    if ($missing.Count -gt 0) { $detail += ('缺失：' + ($missing -join '；')) }
-    if ($bad.Count -gt 0)    { $detail += ('哈希不符：' + ($bad -join '；')) }
-    Add-Check "manifest 内 $($entries.Count) 个文件的 SHA-256 都与磁盘一致" `
+    if ($missing.Count -gt 0) { $detail += ('missing: ' + ($missing -join '; ')) }
+    if ($bad.Count -gt 0)    { $detail += ('hash mismatch: ' + ($bad -join '; ')) }
+    Add-Check "SHA-256 of all $($entries.Count) files in the manifest match the disc" `
         ($missing.Count -eq 0 -and $bad.Count -eq 0) ($detail -join ' / ')
 
-    # 反向：磁盘上是否有 manifest 之外的文件
+    # Reverse direction: does the disc hold files outside the manifest?
     $allowed = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($entry in $entries) { [void]$allowed.Add(([string]$entry.Name).Replace('\', '/')) }
     [void]$allowed.Add('pad.bin')
@@ -340,11 +340,11 @@ if ($null -ne $manifestFiles) {
         if (-not $allowed.Contains($rel)) { $extra.Add($rel) }
     }
     $extraDetail = if ($extra.Count -gt 0) {
-        '多余：' + ($extra -join '；') + '（Thumbs.db / desktop.ini 之类系统生成的文件也会算多余，校验前先删掉）'
+        'extra: ' + ($extra -join '; ') + ' (system files such as Thumbs.db / desktop.ini also count as extra; delete them before checking)'
     } else { '' }
-    Add-Check '没有 manifest 之外的多余文件' ($extra.Count -eq 0) $extraDetail
+    Add-Check 'no extra files beyond the manifest' ($extra.Count -eq 0) $extraDetail
 } else {
-    Add-Check '文件哈希可校验' $false 'manifest 不可用或没有 files'
+    Add-Check 'file hashes can be checked' $false 'manifest unusable or has no files'
 }
 
 # ---------------------------------------------------------------------------
@@ -356,41 +356,41 @@ Write-Host '[start.cmd]' -ForegroundColor Cyan
 $startPath = Join-Path $discPath 'start.cmd'
 if (Test-Path -LiteralPath $startPath -PathType Leaf) {
     $startBytes = [System.IO.File]::ReadAllBytes($startPath)
-    Add-Check 'start.cmd 非空' ($startBytes.Length -gt 0) '文件是 0 字节'
+    Add-Check 'start.cmd is not empty' ($startBytes.Length -gt 0) 'file is 0 bytes'
 
     $bom = ($startBytes.Length -ge 3 -and $startBytes[0] -eq 0xEF -and $startBytes[1] -eq 0xBB -and $startBytes[2] -eq 0xBF)
     $utf16 = ($startBytes.Length -ge 2 -and $startBytes[0] -eq 0xFF -and $startBytes[1] -eq 0xFE)
-    Add-Check 'start.cmd 不带 BOM（cmd.exe 才吃得下）' (-not $bom -and -not $utf16) `
-        $(if ($utf16) { 'UTF-16 编码，cmd.exe 无法执行' } else { 'UTF-8 BOM 可能被 cmd.exe 当成命令' })
+    Add-Check 'start.cmd has no BOM (cmd.exe needs it that way)' (-not $bom -and -not $utf16) `
+        $(if ($utf16) { 'UTF-16 encoded; cmd.exe cannot run it' } else { 'a UTF-8 BOM may be treated as a command by cmd.exe' })
 
     $text = Read-TextFile $startPath
     $problem = ''
     $crlfOk = Test-Crlf -Text $text -Problem ([ref]$problem)
-    Add-Check 'start.cmd 使用 CRLF 行尾' $crlfOk $problem
+    Add-Check 'start.cmd uses CRLF line endings' $crlfOk $problem
 
     if ($text -match 'placeholder start\.cmd') {
-        Add-NoteLine 'start.cmd 是占位版本（打包时工作区没有 start.cmd）——这张盘还不能启动。'
+        Add-NoteLine 'start.cmd is a placeholder (the workspace had no start.cmd when packing) - this disc cannot start yet.'
     }
 } else {
-    Add-Check 'start.cmd 存在，可做后续校验' $false '文件缺失'
+    Add-Check 'start.cmd exists so later checks can run' $false 'file missing'
 }
 
 # ---------------------------------------------------------------------------
-# 7. engine（可选，缺失只提示不判失败）
+# 7. engine (optional; a missing engine is only a note, not a failure)
 # ---------------------------------------------------------------------------
 Write-Host ''
-Write-Host '[engine（可选）]' -ForegroundColor Cyan
+Write-Host '[engine (optional)]' -ForegroundColor Cyan
 
 $engineDir = Join-Path $discPath 'engine'
 if (Test-Path -LiteralPath $engineDir -PathType Container) {
     $engineFiles = @(Get-ChildItem -LiteralPath $engineDir -Recurse -Force -File)
     if ($engineFiles.Count -eq 0) {
-        Add-NoteLine 'engine\ 存在但是空的——盘上没有引擎，启动会报错 1。'
+        Add-NoteLine 'engine\ exists but is empty - no engine on the disc; starting will fail with code 1.'
     } else {
-        Add-Check "engine\ 有 $($engineFiles.Count) 个文件" $true
+        Add-Check "engine\ has $($engineFiles.Count) files" $true
     }
 } else {
-    Add-NoteLine '盘上没有 engine\（打包时工作区没有引擎）——启动会报错 1。'
+    Add-NoteLine 'no engine\ on the disc (the workspace had no engine when packing) - starting will fail with code 1.'
 }
 
 
@@ -405,31 +405,31 @@ if (Test-Path -LiteralPath $autorunPath -PathType Leaf) {
     $autorunBytes = [System.IO.File]::ReadAllBytes($autorunPath)
     $isUtf16 = ($autorunBytes.Length -ge 2 -and $autorunBytes[0] -eq 0xFF -and $autorunBytes[1] -eq 0xFE)
     if ($isUtf16) {
-        Add-NoteLine '编码 UTF-16LE（含中文标签/动作行，Windows 原生支持）'
+        Add-NoteLine 'encoding UTF-16LE (label/action lines may contain non-ASCII; Windows supports this natively)'
     } else {
-        Add-NoteLine '编码 ASCII/UTF-8'
+        Add-NoteLine 'encoding ASCII/UTF-8'
     }
 
     $autorunText = Read-TextFile $autorunPath
     $hasOpen = $autorunText -match '(?m)^\s*open=start\.cmd\s*$'
-    Add-Check 'autorun.inf 含 open=start.cmd' $hasOpen '缺少 open=start.cmd 行'
+    Add-Check 'autorun.inf contains open=start.cmd' $hasOpen 'missing the open=start.cmd line'
 
-    Add-Check 'autorun.inf 含 label=' ($autorunText -match '(?m)^\s*label=.+$') '缺少 label 行'
+    Add-Check 'autorun.inf contains label=' ($autorunText -match '(?m)^\s*label=.+$') 'missing the label line'
 
     $problem = ''
     $crlfOk = Test-Crlf -Text $autorunText -Problem ([ref]$problem)
-    Add-Check 'autorun.inf 使用 CRLF 行尾' $crlfOk $problem
+    Add-Check 'autorun.inf uses CRLF line endings' $crlfOk $problem
 
     $iconMatch = [regex]::Match($autorunText, '(?m)^\s*icon=(.+?)\s*$')
     if ($iconMatch.Success) {
         $iconRel = $iconMatch.Groups[1].Value.Trim().Replace('/', '\')
         $iconFull = Join-Path $discPath $iconRel
-        Add-Check "autorun.inf 的 icon 指向存在的文件（$iconRel）" (Test-Path -LiteralPath $iconFull -PathType Leaf) 'icon 行指向的文件不存在'
+        Add-Check "autorun.inf icon points at an existing file ($iconRel)" (Test-Path -LiteralPath $iconFull -PathType Leaf) 'the file named on the icon line does not exist'
     } else {
-        Add-NoteLine '没有 icon 行（人设包没有 avatar.ico 时这是正常的）'
+        Add-NoteLine 'no icon line (normal when the persona pack has no avatar.ico)'
     }
 } else {
-    Add-Check 'autorun.inf 存在，可做后续校验' $false '文件缺失'
+    Add-Check 'autorun.inf exists so later checks can run' $false 'file missing'
 }
 
 # ---------------------------------------------------------------------------
@@ -441,26 +441,26 @@ Write-Host '[README.txt]' -ForegroundColor Cyan
 $readmePath = Join-Path $discPath 'README.txt'
 if (Test-Path -LiteralPath $readmePath -PathType Leaf) {
     $readmeText = Read-TextFile $readmePath
-    Add-Check 'README.txt 非空' ($readmeText.Trim().Length -gt 0) '文件只有空白'
-    Add-Check 'README.txt 提到 home 目录' ($readmeText -match 'LOCALAPPDATA') '没有说明 home 落在哪'
+    Add-Check 'README.txt is not empty' ($readmeText.Trim().Length -gt 0) 'file contains only whitespace'
+    Add-Check 'README.txt mentions the home directory' ($readmeText -match 'LOCALAPPDATA') 'does not say where home lives'
     $problem = ''
     $crlfOk = Test-Crlf -Text $readmeText -Problem ([ref]$problem)
-    Add-Check 'README.txt 使用 CRLF 行尾' $crlfOk $problem
+    Add-Check 'README.txt uses CRLF line endings' $crlfOk $problem
 } else {
-    Add-Check 'README.txt 存在，可做后续校验' $false '文件缺失'
+    Add-Check 'README.txt exists so later checks can run' $false 'file missing'
 }
 
 # ---------------------------------------------------------------------------
-# 汇总
+# Summary
 # ---------------------------------------------------------------------------
 $total = $script:PassCount + $script:FailCount
 Write-Host ''
 Write-Host '------------------------------------------------------------' -ForegroundColor DarkGray
-Write-Host "  检查项：$total    通过：$($script:PassCount)    失败：$($script:FailCount)"
+Write-Host "  Checks: $total    Passed: $($script:PassCount)    Failed: $($script:FailCount)"
 if ($manifestUsable) {
-    Write-Host "  discID：$([string]$manifest.discID)    名称：$([string]$manifest.name)    版本：$([string]$manifest.version)"
+    Write-Host "  discID: $([string]$manifest.discID)    Name: $([string]$manifest.name)    Version: $([string]$manifest.version)"
 }
-if ($discIDFromPad) { Write-Host "  pad.bin 算出：$discIDFromPad" }
+if ($discIDFromPad) { Write-Host "  pad.bin computes: $discIDFromPad" }
 Write-Host '------------------------------------------------------------' -ForegroundColor DarkGray
 
 if ($script:FailCount -eq 0) {
@@ -471,7 +471,7 @@ if ($script:FailCount -eq 0) {
 }
 
 Write-Host ''
-Write-Host '失败项：' -ForegroundColor Red
+Write-Host 'Failed checks:' -ForegroundColor Red
 foreach ($f in $script:Failures) { Write-Host "  ✗ $f" -ForegroundColor Red }
 Write-Host ''
 Write-Host 'FAIL' -ForegroundColor Red

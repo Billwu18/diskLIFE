@@ -1,6 +1,6 @@
-﻿# DiscPersona 启动引擎 · 凭据搬运
-# 只做「块级搬运」：把主 home .credentials.yaml 里三条与 LLM 有关的条目原样搬进人格 home，
-# 不解析、不解码、不打印任何密钥值。目标文件里已有的 browser-session grant 原样保留。
+﻿# diskLIFE launch engine - credential import
+# Block-level copy only: move the three LLM entries of the source home .credentials.yaml into the persona home as-is,
+# without parsing, decoding, or printing any key value. Any browser-session grant already in the target file is kept as-is.
 
 $script:DPCredentialRecordIds = @(
     'deepseek-account-platform/default',
@@ -10,11 +10,11 @@ $script:DPCredentialRefKeys = @('DEEPSEEK_API_KEY')
 
 function Get-DPCredentialDocument {
     <#
-      把 .credentials.yaml 拆成：
+      Split .credentials.yaml into:
         VersionLine : 'version: 1'
-        Records     : 有序字典 记录 id -> 该记录的原始行（含 "  <id>:" 表头行）
-        RefLines    : refs 段下的原始行（形如 "  KEY: value"）
-      只按缩进/键名切块，值原样保留。
+        Records     : ordered dictionary record id -> the original lines of that record (including the "  <id>:" header line)
+        RefLines    : original lines under the refs section (shaped like "  KEY: value")
+      Block only by indentation/key name; values are kept as-is.
     #>
     param([string]$Path)
 
@@ -38,7 +38,7 @@ function Get-DPCredentialDocument {
         if ($raw.Length -eq 0) { continue }
 
         if ($raw -notmatch '^[ \t]') {
-            # 顶层键：结束当前记录
+            # Top-level key: ends the current record
             if ($currentId -and $buffer) { $doc.Records[$currentId] = @($buffer) }
             $currentId = $null
             $buffer = $null
@@ -96,7 +96,7 @@ function Write-DPCredentialDocument {
 
 function Test-DPCredentialHasLlm {
     <#
-      判断一个 .credentials.yaml 是否含可用的 LLM 凭据（只检查键是否存在，不读值）。
+      Tell whether a .credentials.yaml holds usable LLM credentials (checks that the keys exist, never reads values).
     #>
     param([string]$Path)
     if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return $false }
@@ -113,11 +113,11 @@ function Test-DPCredentialHasLlm {
 
 function Import-DPLlmCredentials {
     <#
-      把主 home 的 LLM 凭据搬进人格 home。
-      返回 @{ Ok = bool; Reason = 'ok' | 'missing-source' | 'no-llm' | 'write-failed'; Count = n }
-      - 只搬 deepseek-account-platform/default、.../device 两个 record 块 + refs.DEEPSEEK_API_KEY。
-      - 目标文件里其它条目（例如 DSH 自己生成的 client-connection/browser-session）保持不动。
-      - 全程不输出任何密钥内容。
+      Copy the LLM credentials of the source home into the persona home.
+      Returns @{ Ok = bool; Reason = 'ok' | 'missing-source' | 'no-llm' | 'write-failed'; Count = n }
+      - Copies only the deepseek-account-platform/default and .../device record blocks + refs.DEEPSEEK_API_KEY.
+      - Other entries in the target file (such as the client-connection/browser-session that DSH creates) stay untouched.
+      - No key content is ever printed.
     #>
     param(
         [Parameter(Mandatory = $true)][string]$SourcePath,
@@ -147,7 +147,7 @@ function Import-DPLlmCredentials {
     try {
         $dst = Get-DPCredentialDocument -Path $TargetPath
         foreach ($id in $imported) { $dst.Records[$id] = @($src.Records[$id]) }
-        # refs：同名键替换，没有就追加
+        # refs: replace a key with the same name, otherwise append
         $refs = New-Object System.Collections.ArrayList
         $replaced = @{}
         foreach ($line in $dst.RefLines) {
@@ -185,8 +185,8 @@ function Import-DPLlmCredentials {
 
 function Get-DPSourceHome {
     <#
-      主 home 定位：DISCPERSONA_SOURCE_HOME > DSH_HOME > %USERPROFILE%\.dsh > %LOCALAPPDATA%\dsh
-      返回候选列表里第一个存在 .credentials.yaml 的目录；都不存在返回 $null。
+      Source home resolution: DISCPERSONA_SOURCE_HOME > DSH_HOME > %USERPROFILE%\.dsh > %LOCALAPPDATA%\dsh
+      Returns the first candidate directory that has .credentials.yaml; $null when none does.
     #>
     param([string]$Explicit)
     $candidates = New-Object System.Collections.ArrayList
