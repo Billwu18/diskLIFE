@@ -4,22 +4,69 @@ All notable changes to this project. Format loosely follows [Keep a Changelog](h
 this project does not promise semantic versioning for the launcher — the **disc format** version is what
 matters for compatibility.
 
+## [0.2.2] - 2026-11-05
+
+### Added
+
+- **The Studio now speaks English.** It follows the browser: a Chinese browser gets Chinese, anything else
+  gets English. Override with `?lang=zh` / `?lang=en`, or the switch in the top-right corner — the choice is
+  remembered in `localStorage`.
+- `studio/web/i18n.js`: a ~240-entry dictionary plus a DOM applier. Chinese stays the source language in the
+  markup and scripts; anything without a translation falls back to Chinese instead of showing a key.
+- The plugin-pack cards are localised too — `/api/env` now returns `label_en` / `desc_en` alongside the
+  Chinese labels.
+
+### Fixed
+
+- Preview and footer counters (`chars`, `lines`) stayed Chinese in the English UI.
+
+---
+
+### 新增
+
+- **Studio 有英文界面了。** 跟随浏览器：中文环境显示中文，其它语言环境显示英文。可用 `?lang=zh` /
+  `?lang=en` 或右上角切换按钮覆盖，选择记在 `localStorage` 里。
+- `studio/web/i18n.js`：约 240 条词条 + 一个 DOM 替换器。源码里中文仍是源语言，缺译文时回退中文而不是显示 key。
+- 插件包卡片也本地化了：`/api/env` 现在同时返回 `label_en` / `desc_en`。
+
+### 修复
+
+- 英文界面下预览区与页脚的「字 / 行」计数残留中文。
+
 ## [0.2.1] - 2026-11-05
 
 ### Fixed
 
-- **凭据来源不再硬编码**。`Get-DPSourceHome` 之前把 `E:\dsh\dsh-data`（开发机的主 home）写死成候选，
-  在**没有 E: 盘符的机器上** `Join-Path` 会抛 `Cannot find drive`，导致首次启动直接失败。
-  现在的顺序是：`-SourceHome` 参数 > `DISCPERSONA_SOURCE_HOME` > `DSH_HOME` > `%USERPROFILE%\.dsh` >
-  `%LOCALAPPDATA%\dsh`，路径拼接改用不校验盘符的 `[System.IO.Path]::Combine`，找不到就跳过并继续。
-- **自测不再依赖本机主 home**。`engine/_selftest/run-tests.ps1` 现在自己设置 `DISCPERSONA_SOURCE_HOME`
-  指向测试夹具，在没登录过 DSH 的干净机器（CI）上也能跑出 17/17。
-- `README.zh-CN.md` 的「运行要求」一节之前只剩标题，已补回内容。
+- **Credential lookup is no longer hard-coded.** `Get-DPSourceHome` used to carry the developer machine's
+  `E:\dsh\dsh-data` as a candidate; on a machine without an `E:` drive `Join-Path` threw `Cannot find drive`
+  and the very first launch failed. The order is now `-SourceHome` > `DISCPERSONA_SOURCE_HOME` > `DSH_HOME` >
+  `%USERPROFILE%\.dsh` > `%LOCALAPPDATA%\dsh`, joined with `[System.IO.Path]::Combine` (which does not validate
+  the drive letter), skipping missing candidates instead of throwing.
+- **The self-test no longer depends on the machine's real DSH home.** `engine/_selftest/run-tests.ps1` now sets
+  `DISCPERSONA_SOURCE_HOME` to its own fixture, so 17/17 passes on a clean CI runner that never logged in to DSH.
+- `README.zh-CN.md` had a bare `## 运行要求` heading with no content; the section is back.
 
 ### Changed
 
-- 项目名在 README 中统一为 **diskLIFE**（运行时目录 `DiscPersona\personas\<discID>` 保持不变，属于磁盘契约，
-  两份 README 都加了「关于名字 / Naming」说明）。
+- The project name is **diskLIFE** throughout both READMEs. The runtime folder stays
+  `DiscPersona\personas\<discID>` (it is part of the on-disk contract); both READMEs explain the mismatch.
+
+---
+
+### 修复
+
+- **凭据来源不再硬编码**：`Get-DPSourceHome` 之前把开发机的 `E:\dsh\dsh-data` 写死成候选，在没有 `E:` 盘符的
+  机器上 `Join-Path` 会抛 `Cannot find drive`，首次启动直接失败。现在的顺序是 `-SourceHome` >
+  `DISCPERSONA_SOURCE_HOME` > `DSH_HOME` > `%USERPROFILE%\.dsh` > `%LOCALAPPDATA%\dsh`，拼接改用
+  `[System.IO.Path]::Combine`，找不到就跳过。
+- **自测不再依赖本机主 home**：`engine/_selftest/run-tests.ps1` 自己设置 `DISCPERSONA_SOURCE_HOME` 指向测试夹具，
+  在没登录过 DSH 的干净 CI 上也能跑出 17/17。
+- `README.zh-CN.md` 的「运行要求」之前只剩标题，已补回内容。
+
+### 变更
+
+- 项目名在两份 README 中统一为 **diskLIFE**；运行时目录仍叫 `DiscPersona\personas\<discID>`（属于磁盘契约），
+  两份 README 都加了说明。
 
 ## [0.2.0] - 2026-11-05
 

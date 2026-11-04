@@ -431,3 +431,14 @@ input[type="color"] { height: 38px; padding: 3px; cursor: pointer; }
 .payload-main em { font-size: 12px; font-style: normal; color: rgba(232,241,245,.62); line-height: 1.5; }
 .payload-main code { font-size: 11px; color: rgba(232,241,245,.45); word-break: break-all; }
 .payload-size { font-size: 11px; color: rgba(232,241,245,.45); white-space: nowrap; }
+
+/* 语言切换：看起来像 chip，行为像按钮 */
+.chip.lang {
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 0.04em;
+}
+.chip.lang:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}

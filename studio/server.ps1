@@ -392,16 +392,21 @@ function Get-PayloadPresetList {
     $noneItem = [ordered]@{
         preset    = 'none'
         label     = '不带插件'
+        label_en  = 'No plugins'
         desc      = '最快最干净，人格 DSH 只带人设。适合只要「插盘就聊天」的人。'
+        desc_en   = 'Fastest and cleanest: the persona instance ships with nothing but the persona.'
         ok        = $true
         sizeBytes = 0
         plugins   = @()
     }
     $result += [pscustomobject]$noneItem
     $labels = @{
-        comfort = @('对话舒适包', '人设卡 + 文件式记忆 + 人设库，三档作用域、免重启切换。')
-        token   = @('省 token 包', '软压缩历史、后台预备摘要、图片进上下文前先压小。聊得久也不容易顶到上限。')
-        full    = @('全套', '舒适包 + 省 token 包，插件最多，首次启动稍慢一点。')
+        comfort = @('对话舒适包', '人设卡 + 文件式记忆 + 人设库，三档作用域、免重启切换。',
+                    'Comfort pack', 'Persona card + file-based memory + a persona library with three scopes and no-restart switching.')
+        token   = @('省 token 包', '软压缩历史、后台预备摘要、图片进上下文前先压小。聊得久也不容易顶到上限。',
+                    'Token saver', 'Soft-compresses history, pre-writes summaries in the background, shrinks images before they enter context.')
+        full    = @('全套', '舒适包 + 省 token 包，插件最多，首次启动稍慢一点。',
+                    'Everything', 'Comfort pack plus token saver. Most plugins, slightly slower first boot.')
     }
     foreach ($preset in @('comfort', 'token', 'full')) {
         $dir = Join-Path $workspaceRoot ('payload\' + $preset + '\profile-web')
@@ -424,7 +429,9 @@ function Get-PayloadPresetList {
         $result += [pscustomobject][ordered]@{
             preset    = $preset
             label     = $lbl[0]
+            label_en  = $lbl[2]
             desc      = $lbl[1]
+            desc_en   = $lbl[3]
             ok        = $ok
             sizeBytes = [int64]$sizeBytes
             plugins   = @($plugins)

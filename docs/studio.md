@@ -131,6 +131,14 @@ $body = @{ persona = 'persona/aris'; out = 'build/aris'; reusePad = $true } | Co
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:4791/api/build -Body $body -ContentType 'application/json'
 ```
 
+## 界面语言
+
+- 跟随浏览器：`navigator.languages` 里第一个匹配 `zh*` 的 → 中文，否则英文。
+- 覆盖：`?lang=zh` / `?lang=en`，或右上角语言按钮（写入 `localStorage['discpersona.studio.lang']`）。
+- 实现：`studio/web/i18n.js` 里一张「中文原句 → 英文」的字典（约 240 条），`t()` 查不到就原样返回；
+  `applyDom()` 用 TreeWalker 替换静态文本、`placeholder`、`title`。
+- 只有 Studio 是双语的；启动器与打包器输出保持中文。
+
 ## 已知边界
 
 - 只跑在 Windows（依赖 PowerShell 与 WMI 查光驱）；不是跨平台 Web 应用。

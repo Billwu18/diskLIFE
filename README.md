@@ -95,6 +95,17 @@ Studio also exposes this as cards on the "07 出厂" step. The chosen preset and
 written to `persona\meta.json` (`payload.preset` / `payload.plugins`) and to the room's
 `state.json` (`payloadPreset` / `payloadPlugins`), so it is always auditable after the fact.
 
+## Language
+
+The Studio follows your browser. A Chinese browser (`zh-*`) gets the Chinese interface; every other
+language gets English. Two ways to override it:
+
+- the switch in the top-right corner of the Studio (the choice is remembered locally), or
+- `http://127.0.0.1:4791/?lang=en` / `?lang=zh` on the URL.
+
+Only the Studio is bilingual: the launcher, the packer and their messages are Chinese. Persona files you
+write are never translated — whatever you type is what the persona gets.
+
 ## Requirements
 
 | | |

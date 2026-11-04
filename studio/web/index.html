@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>DiscPersona Studio · 造一个人</title>
 <link rel="stylesheet" href="app.css" />
+<script src="i18n.js"></script>
 </head>
 <body>
 <div class="app" id="app">
@@ -21,6 +22,7 @@
       <span class="chip" id="chip-dsh">dsh —</span>
       <span class="chip" id="chip-payload">插件包 —</span>
       <span class="chip" id="chip-key">AI 起草 —</span>
+      <button class="chip lang" id="btn-lang" type="button" title="Switch language">EN</button>
     </div>
   </header>
 
@@ -243,6 +245,7 @@
 </div>
 
 <script src="app.js"></script>
+<script>if (window.I18N) { I18N.applyDom(document.body); }</script>
 <script src="card-import.js"></script>
 </body>
 </html>
