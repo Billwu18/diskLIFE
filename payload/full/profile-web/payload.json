@@ -1,0 +1,46 @@
+{
+    "format":  1,
+    "kind":  "discpersona/profile-payload",
+    "preset":  "full",
+    "builtAt":  "2026-11-05T00:17:58+08:00",
+    "dshVersion":  "0.2.1-rc.5",
+    "plugins":  [
+                    {
+                        "name":  "dsh-soul-md",
+                        "range":  "^0.11.0",
+                        "version":  "0.11.0"
+                    },
+                    {
+                        "name":  "dsh-persona-dafeiyu",
+                        "range":  "^0.7.4",
+                        "version":  "0.7.4"
+                    },
+                    {
+                        "name":  "dsh-context-compress",
+                        "range":  "^0.2.2",
+                        "version":  "0.2.2"
+                    },
+                    {
+                        "name":  "dsh-faster-compress",
+                        "range":  "^0.2.4",
+                        "version":  "0.2.4"
+                    },
+                    {
+                        "name":  "dsh-read-image-compress",
+                        "range":  "^0.15.0",
+                        "version":  "0.15.0"
+                    }
+                ],
+    "bundles":  [
+                    "@deepseek-ai/dsh-base",
+                    "@deepseek-ai/dsh-web-app",
+                    "dsh-context-compress",
+                    "dsh-faster-compress",
+                    "dsh-persona-dafeiyu",
+                    "dsh-read-image-compress",
+                    "dsh-soul-md"
+                ],
+    "fileCount":  112,
+    "bytes":  907142,
+    "note":  "由 tools/New-ProfilePayload.ps1 生成；启动器复制到人格 home 的 profiles\\web。"
+}

@@ -4,6 +4,26 @@ All notable changes to this project. Format loosely follows [Keep a Changelog](h
 this project does not promise semantic versioning for the launcher — the **disc format** version is what
 matters for compatibility.
 
+## [0.2.0] - 2026-11-05
+
+### Added
+
+- **四组插件包预设**（打包时 `-PayloadPreset`，Studio「07 出厂」页可选），全部随盘离线：
+  - `none` —— 不带插件，首次启动最快；
+  - `comfort` —— `dsh-soul-md` + `dsh-persona-dafeiyu`；
+  - `token` —— `dsh-context-compress`（历史软压缩）+ `dsh-faster-compress`（后台预备摘要）+
+    `dsh-read-image-compress`（图片进上下文前先压小），长对话更省 token、不容易顶到上下文上限；
+  - `full` —— 五个都要。
+- Studio 插件包卡片：体积、具体插件、是否已构建；选择写进 `persona\meta.json` 的 `payload.preset` / `payload.plugins`。
+- `/api/env` 新增 `payloadPresets[]`；`/api/build` 接受 `payload`；`state.json` 新增 `payloadPreset`（日志也会打印预设）。
+- `tools/New-ProfilePayload.ps1` 新增 `-Preset comfort|token|full|custom`，输出默认按预设分目录。
+
+### Changed
+
+- `payload\` 改成按预设分库 `payload\<preset>\profile-web`（旧 `payload\profile-web` 仍识别）。
+- `tools/New-Disc.ps1` 默认 `-PayloadPreset comfort`（与旧行为一致）；`none` 可打纯人设盘。
+- Studio 调子脚本的输出改走临时文件再解码，日志中文不再乱码。
+
 ## [0.1.0] — first public release
 
 First open-source snapshot of a system that had been running privately for a few days.

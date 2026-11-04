@@ -8,7 +8,7 @@
     哈希全部对不上，启动器会报 E03。
 
 .PARAMETER Source
-    光盘目录（New-Disc.ps1 的 -Out），例如 examples\sample-disc。
+    光盘目录（New-Disc.ps1 的 -Out），例如 examples\demo-aris。
 
 .PARAMETER Out
     输出 ISO 路径，默认 build\<目录名>.iso。
@@ -20,7 +20,7 @@
     输出已存在时覆盖。
 
 .EXAMPLE
-    powershell -File tools\New-Iso.ps1 -Source examples\sample-disc -Out build\demo.iso
+    powershell -File tools\New-Iso.ps1 -Source examples\demo-aris -Out build\demo.iso
 #>
 [CmdletBinding()]
 param(

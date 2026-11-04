@@ -63,12 +63,33 @@ disc (read-only)                    room (your disk, writable)
   error codes B01–B08 instead of COM stack traces.
 - **Optional watcher** — a tray agent that launches the persona when the disc is inserted
   (Windows still asks for confirmation once; see FAQ).
-- **Offline plugin payload** — the disc carries `dsh-soul-md` and `dsh-persona-dafeiyu` (both MIT),
-  pre-installed into a profile snapshot. If they ever fail to load, the launcher falls back to a
-  vanilla profile automatically.
+- **Four offline plugin packs** — pick one when you build the disc (`-PayloadPreset`), no network
+  needed at first boot: `none` (fastest), `comfort` (persona card + file memory + persona library),
+  `token` (`dsh-context-compress` + `dsh-faster-compress` + `dsh-read-image-compress` — softer
+  long-chat context, fewer tokens), or `full` (all five, ~0.87 MB). If a pack ever fails to load,
+  the launcher falls back to a vanilla profile automatically.
 - **Honest failure modes** — every failure is a Chinese message plus an error code (E01–E10), never
   a silent exit. `E10` means "already running" and exits 0 with the existing URL.
 - **No admin rights; Chinese paths and spaces supported.**
+
+## Plugin packs
+
+Everything below is pre-built and shipped in this repo, so a disc works offline on first boot.
+
+| Preset | Size | Plugins | Good for |
+| --- | --- | --- | --- |
+| `none` | 0 | — | Smallest, fastest start; just chat with the persona |
+| `comfort` | 0.49 MB | `dsh-soul-md`, `dsh-persona-dafeiyu` | Persona card, file-based memory, switch personas without restart |
+| `token` | 0.58 MB | `dsh-context-compress`, `dsh-faster-compress`, `dsh-read-image-compress` | Long chats and screenshots; keeps you away from the context ceiling |
+| `full` | 0.87 MB | all five | Both of the above |
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\New-Disc.ps1 -Persona examples\sample-persona -Out examples\sample-disc -PayloadPreset token
+```
+
+Studio also exposes this as cards on the "07 出厂" step. The chosen preset and plugin list are
+written to `persona\meta.json` (`payload.preset` / `payload.plugins`) and to the room's
+`state.json` (`payloadPreset` / `payloadPlugins`), so it is always auditable after the fact.
 
 ## Requirements
 
@@ -174,9 +195,9 @@ Design rules that keep it pleasant:
 | `tools/Test-Disc.ps1` | 36 static checks, returns `PASS` / list of failures |
 | `tools/New-Iso.ps1` | Disc tree → ISO for Windows (IMAPI2, ISO 9660 + Joliet) |
 | `tools/Burn-Iso.ps1` | ISO → CD-R/CD-RW (IMAPI2, codes B01–B08) |
-| `tools/New-ProfilePayload.ps1` | Rebuilds `payload/profile-web` (plugin snapshot) from npm |
+| `tools/New-ProfilePayload.ps1` | Rebuilds one plugin pack (`-Preset comfort|token|full`) from npm |
 | `studio/` | Local web app + HTTP API (no build step, no npm install) |
-| `payload/profile-web/` | Pre-installed plugin profile shipped on the disc (MIT, see notices) |
+| `payload\<preset>\profile-web/` | Pre-installed plugin profile per preset, shipped on the disc (MIT, see notices) |
 | `examples/sample-persona/` | A complete, original example pack |
 | `docs/` | Engine internals, disc spec, Studio manual |
 

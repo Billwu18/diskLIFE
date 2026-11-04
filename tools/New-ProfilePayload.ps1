@@ -14,9 +14,16 @@
     profiles\web 复制到 -Out，再写 payload.json。可选 -Verify 会拿这份 payload
     真起一次 dsh，确认插件不会拖垮启动。
 
+.PARAMETER Preset
+    预置组合，默认 comfort：
+      comfort  对话舒适包 = dsh-soul-md（人设卡 + 文件式记忆）+ dsh-persona-dafeiyu（人设库 + 免重启切换）
+      token    省 token 包 = dsh-context-compress（软压缩）+ dsh-faster-compress（后台预备摘要）
+               + dsh-read-image-compress（图片进上下文前先压）
+      full     两个都要
+      custom   自己给 -Plugins
+
 .PARAMETER Plugins
-    要装的 npm 包名。默认是「对话舒适包」：dsh-soul-md（人设卡 + 文件式记忆）
-    + dsh-persona-dafeiyu（人设库 + 免重启切换）。
+    要装的 npm 包名（-Preset custom 时必填；多个用空格分隔）。
 
 .PARAMETER Out
     输出目录，默认 build\payload\profile-web（打包器会自动捡这个路径）。
@@ -35,7 +42,9 @@
 #>
 [CmdletBinding()]
 param(
-    [string[]]$Plugins = @('dsh-soul-md', 'dsh-persona-dafeiyu'),
+    [ValidateSet('comfort', 'token', 'full', 'custom')]
+    [string]$Preset = 'comfort',
+    [string[]]$Plugins = @(),
     [string]$Out = '',
     [switch]$Force,
     [switch]$SkipVerify
@@ -47,7 +56,20 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 $scriptPath = $MyInvocation.MyCommand.Path
 $toolsDir = Split-Path -Parent $scriptPath
 $workspaceRoot = Split-Path -Parent $toolsDir
-if (-not $Out) { $Out = Join-Path $workspaceRoot 'build\payload\profile-web' }
+$presetTable = [ordered]@{
+    comfort = @('dsh-soul-md', 'dsh-persona-dafeiyu')
+    token   = @('dsh-context-compress', 'dsh-faster-compress', 'dsh-read-image-compress')
+    full    = @('dsh-soul-md', 'dsh-persona-dafeiyu', 'dsh-context-compress', 'dsh-faster-compress', 'dsh-read-image-compress')
+}
+if ($Preset -ne 'custom') {
+    $Plugins = $presetTable[$Preset]
+}
+elseif (-not $Plugins -or $Plugins.Count -eq 0) {
+    Write-Host '  !!  -Preset custom 需要用 -Plugins 指定包名（空格分隔多个）。' -ForegroundColor Red
+    exit 1
+}
+
+if (-not $Out) { $Out = Join-Path $workspaceRoot ('build\payload' + $Preset + '\profile-web') }
 elseif (-not [System.IO.Path]::IsPathRooted($Out)) { $Out = Join-Path $workspaceRoot $Out }
 
 $buildDir = Join-Path $workspaceRoot 'build'
@@ -196,6 +218,7 @@ Write-Ok ('payload 文件数：' + $stats.FileCount + '，体积：' + [math]::R
 $manifest = [ordered]@{
     format     = 1
     kind       = 'discpersona/profile-payload'
+    preset     = $Preset
     builtAt    = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ssK')
     dshVersion = $dshVersion
     plugins    = $pluginInfo
@@ -252,5 +275,5 @@ if (-not $SkipVerify) {
 }
 
 Write-Host ''
-Write-Host ('PAYLOAD_OK ' + [math]::Round($stats.Bytes / 1MB, 2) + 'MB files=' + $stats.FileCount + ' plugins=' + $Plugins.Count + ' out=' + $Out) -ForegroundColor Green
+Write-Host ('PAYLOAD_OK preset=' + $Preset + ' ' + [math]::Round($stats.Bytes / 1MB, 2) + 'MB files=' + $stats.FileCount + ' plugins=' + $Plugins.Count + ' out=' + $Out) -ForegroundColor Green
 Write-Host '下一步：用 tools\New-Disc.ps1 打包时它会自动把 build\payload\profile-web 放进光盘。'

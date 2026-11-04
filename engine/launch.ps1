@@ -461,6 +461,7 @@ $profileDir = Join-Path $homeDir 'profiles\web'
 $firstBoot = -not (Test-Path -LiteralPath $profileDir -PathType Container)
 $payloadUsedNow = $false
 $payloadPluginNames = $null
+$payloadPresetName = 'none'
 
 function ConvertTo-DPJsonString {
     param([AllowEmptyString()][string]$Value)
@@ -687,7 +688,8 @@ if ($firstBoot) {
                 $names = @()
                 foreach ($pl in @($pm.plugins)) { if ($pl) { $names += ([string]$pl.name + ' ' + [string]$pl.version) } }
                 $payloadPluginNames = $names
-                Add-DPLog -Message ('插件载荷：' + ($names -join '、') + '（打包时 dsh ' + [string]$pm.dshVersion + '）')
+                if ($pm.PSObject.Properties['preset'] -and $pm.preset) { $payloadPresetName = [string]$pm.preset }
+                Add-DPLog -Message ('插件载荷：' + ($names -join '、') + '（打包时 dsh ' + [string]$pm.dshVersion + '，预设 ' + $payloadPresetName + '）')
             } catch {
                 Add-DPLog -Message ('payload.json 解析失败（不阻塞启动）：' + $_.Exception.Message) -Level '警告'
             }
@@ -873,6 +875,7 @@ if (Test-Path -LiteralPath $statePath) {
 }
 if ($pendingUpgrade) { $state.pendingPersonaUpgrade = $pendingUpgrade }
 if ($payloadPluginNames) { $state.payloadPlugins = @($payloadPluginNames) }
+if ($payloadPresetName) { $state.payloadPreset = $payloadPresetName }
 $portMatch = [regex]::Match($readyUrl, '127\.0\.0\.1:(\d+)/')
 if ($portMatch.Success) { $state.lastPort = [int]$portMatch.Groups[1].Value }
 

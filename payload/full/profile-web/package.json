@@ -1,0 +1,24 @@
+{
+  "name": "dsh-profile-web",
+  "private": true,
+  "dependencies": {
+    "dsh-context-compress": "^0.2.2",
+    "dsh-faster-compress": "^0.2.4",
+    "dsh-persona-dafeiyu": "^0.7.4",
+    "dsh-read-image-compress": "^0.15.0",
+    "dsh-soul-md": "^0.11.0"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "dsh-context-compress",
+        "dsh-faster-compress",
+        "dsh-persona-dafeiyu",
+        "dsh-read-image-compress",
+        "dsh-soul-md"
+      ]
+    }
+  }
+}

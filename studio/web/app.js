@@ -46,6 +46,7 @@ const state = {
   seedBirth: '',
   seedBoard: '',
   avatar: '',
+  payloadPreset: 'comfort',
   tab: 'yml',
   ai: false
 };
@@ -171,6 +172,7 @@ function normalizeState(raw) {
     else if (typeof d === 'number') { if (typeof v === 'number' && isFinite(v)) clean[k] = v; }
     else if (typeof d === 'boolean') { clean[k] = !!v; }
   }
+  if (!['none', 'comfort', 'token', 'full'].includes(clean.payloadPreset)) clean.payloadPreset = 'comfort';
   // card-import.js 会额外写入这几个可选字段
   if (typeof raw.cardSystemPrompt === 'string') clean.cardSystemPrompt = raw.cardSystemPrompt;
   if (Array.isArray(raw.altGreetings)) clean.altGreetings = raw.altGreetings.filter((x) => typeof x === 'string');
@@ -345,6 +347,10 @@ function metaJson() {
     discID: '',
     personaVersion: PERSONA_VERSION,
     runtime: 'native',
+    payload: {
+      preset: state.payloadPreset || 'comfort',
+      plugins: []
+    },
     theme: { accent: state.accent, accentSoft: state.accentSoft, background: state.background },
     boot: {
       first: state.greetingFirst || '',
@@ -422,6 +428,39 @@ function seedBoard() {
     '- 记住对方在意的东西。',
     '- 每次启动先看看这份板子。'
   ].join('\n') + '\n';
+}
+
+let payloadPresetsCache = [];
+
+function renderPayloadOptions(list) {
+  const box = $('#payload-options');
+  if (!box) return;
+  if (list) payloadPresetsCache = list;
+  const items = payloadPresetsCache.length ? payloadPresetsCache : [
+    { preset: 'none', label: '不带插件', desc: '最快最干净。', ok: true, plugins: [] },
+    { preset: 'comfort', label: '对话舒适包', desc: '人设卡 + 文件式记忆 + 人设库。', ok: true, plugins: [] }
+  ];
+  box.innerHTML = '';
+  for (const it of items) {
+    const label = document.createElement('label');
+    label.className = 'payload-card' + (state.payloadPreset === it.preset ? ' is-on' : '') + (it.ok ? '' : ' is-off');
+    const size = it.preset === 'none' ? '无' : (it.sizeBytes ? (it.sizeBytes / 1048576).toFixed(2) + ' MB' : '未构建');
+    label.innerHTML =
+      '<input type="radio" name="payload" value="' + escapeHtml(it.preset) + '"' + (state.payloadPreset === it.preset ? ' checked' : '') + (it.ok ? '' : ' disabled') + '>' +
+      '<span class="payload-main"><b>' + escapeHtml(it.label) + '</b>' +
+      '<em>' + escapeHtml(it.desc || '') + '</em>' +
+      (it.plugins && it.plugins.length ? '<code>' + escapeHtml(it.plugins.join(' · ')) + '</code>' : '') +
+      '</span>' +
+      '<span class="payload-size">' + escapeHtml(size) + '</span>';
+    label.addEventListener('click', () => {
+      if (!it.ok) return;
+      state.payloadPreset = it.preset;
+      renderPayloadOptions();
+      save();
+      render();
+    });
+    box.appendChild(label);
+  }
 }
 
 const RENDERERS = { yml: personaYml, agents: agentsMd, meta: metaJson };
@@ -564,7 +603,7 @@ async function doBuild() {
   if (!lastBuild.persona) { await doExport(); if (!lastBuild.persona) return; }
   setLog('正在打包成光盘目录（会顺带校验 36 项）…');
   try {
-    const data = await api('/api/build', { persona: lastBuild.persona, out: '', reusePad: false });
+    const data = await api('/api/build', { persona: lastBuild.persona, out: '', reusePad: false, payload: state.payloadPreset || 'comfort' });
     if (!data.ok) throw new Error((data.output || '').split('\n').slice(-3).join(' / ') || data.code);
     lastBuild.disc = data.outDir;
     $('#ship-disc').textContent = data.outDir + '  · discID=' + data.discID;
@@ -650,10 +689,12 @@ async function bootEnv() {
     if (!envData.ok) throw new Error(envData.error || 'env failed');
     $('#chip-dsh').textContent = 'dsh ' + (envData.dshVersion || '—');
     $('#chip-dsh').className = 'chip ' + (envData.dshVersion ? 'ok' : 'warn');
-    $('#chip-payload').textContent = envData.payload && envData.payload.ok
-      ? '插件包 ' + (envData.payload.plugins || []).length + ' 个'
+    renderPayloadOptions(envData.payloadPresets || []);
+    const readyPresets = (envData.payloadPresets || []).filter((p) => p.ok && p.preset !== 'none');
+    $('#chip-payload').textContent = readyPresets.length
+      ? '插件包 ' + readyPresets.length + ' 种可选'
       : '插件包 未构建';
-    $('#chip-payload').className = 'chip ' + (envData.payload && envData.payload.ok ? 'ok' : 'warn');
+    $('#chip-payload').className = 'chip ' + (readyPresets.length ? 'ok' : 'warn');
     $('#chip-key').textContent = 'AI 起草 ' + (envData.hasKey ? '可用' : '无凭据');
     $('#chip-key').className = 'chip ' + (envData.hasKey ? 'ok' : 'warn');
 
@@ -700,6 +741,10 @@ async function loadPersona(slug, path) {
 
 function applyPersonaPack(pack) {
   const yml = pack.yml || '';
+  if (pack.meta && pack.meta.payload && pack.meta.payload.preset) {
+    const p = String(pack.meta.payload.preset);
+    if (['none', 'comfort', 'token', 'full'].includes(p)) state.payloadPreset = p;
+  }
   const pick = (re) => { const m = yml.match(re); return m ? m[1].trim().replace(/^["']|["']$/g, '') : ''; };
   state.name = pick(/^name:\s*(.+)$/m) || state.name;
   state.nameJp = pick(/^name_jp:\s*(.+)$/m);

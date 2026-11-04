@@ -3,8 +3,8 @@
   DiscPersona 一键刻录（IMAPI2）
   用法：
     powershell -NoProfile -ExecutionPolicy Bypass -File tools\Burn-Iso.ps1 -ListDrives
-    powershell -NoProfile -ExecutionPolicy Bypass -File tools\Burn-Iso.ps1 -IsoPath build\disc.iso -DriveLetter F
-    powershell -NoProfile -ExecutionPolicy Bypass -File tools\Burn-Iso.ps1 -IsoPath build\disc.iso -DriveLetter F -TestOnly
+    powershell -NoProfile -ExecutionPolicy Bypass -File tools\Burn-Iso.ps1 -IsoPath build\aris-al1s.iso -DriveLetter F
+    powershell -NoProfile -ExecutionPolicy Bypass -File tools\Burn-Iso.ps1 -IsoPath build\aris-al1s.iso -DriveLetter F -TestOnly
 
   成功最后一行：BURN_OK <drive> <bytes> bytes <seconds>s
   失败最后一行：BURN_FAIL <Bxx> <中文原因>
@@ -265,7 +265,7 @@ if ($ListDrives) {
 
 # ---------------------------------------------------------------- 参数检查
 if ([string]::IsNullOrWhiteSpace($IsoPath)) {
-    Fail-Burn 'B05' '没有指定 ISO 文件（-IsoPath）。' '用法：-IsoPath build\disc.iso -DriveLetter F'
+    Fail-Burn 'B05' '没有指定 ISO 文件（-IsoPath）。' '用法：-IsoPath build\aris-al1s.iso -DriveLetter F'
 }
 if ([string]::IsNullOrWhiteSpace($DriveLetter)) {
     Fail-Burn 'B01' '没有指定光驱盘符（-DriveLetter）。' '用法：-DriveLetter F 或 -DriveLetter F:'

@@ -1,4 +1,4 @@
-﻿# tools/ —— 造盘流水线
+# tools/ —— 造盘流水线
 
 五个脚本，只依赖 Windows PowerShell 5.1 自带命令（不装 Node、不装 npm 包）。
 
@@ -77,7 +77,7 @@ powershell -ExecutionPolicy Bypass -File tools\New-ProfilePayload.ps1 -Force
 ## 生成 ISO：`New-Iso.ps1`
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools\New-Iso.ps1 -Source examples\sample-disc -Out build\aris.iso
+powershell -ExecutionPolicy Bypass -File tools\New-Iso.ps1 -Source examples\demo-aris -Out build\aris.iso
 ```
 
 - `-Source`：光盘目录树（`New-Disc.ps1` 的产物）

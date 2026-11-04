@@ -46,6 +46,9 @@ param(
 
     [switch]$ReusePad,
 
+    [Parameter(HelpMessage = '插件包预设：none / comfort / token / full（默认 comfort）')]
+    [string]$PayloadPreset = 'comfort',
+
     [Parameter(HelpMessage = '允许覆盖一个不是 DiscPersona 光盘的非空目录')]
     [switch]$Force
 )
@@ -753,18 +756,60 @@ if (Test-Path -LiteralPath $startDst -PathType Leaf) {
 # ---------------------------------------------------------------------------
 Write-Step '[6/7] 写入 autorun.inf 与 README.txt'
 
-$payloadSrc = Join-Path $workspaceRoot 'payload\profile-web'
-if (-not (Test-Path -LiteralPath $payloadSrc -PathType Container)) {
-    $payloadSrc = Join-Path $workspaceRoot 'build\payload\profile-web'
+$preset = $PayloadPreset
+if (-not $preset) { $preset = 'comfort' }
+$payloadSrc = $null
+if ($preset -ne 'none') {
+    $candidates = @(
+        (Join-Path $workspaceRoot ('payload\' + $preset + '\profile-web')),
+        (Join-Path $workspaceRoot ('build\payload\' + $preset + '\profile-web')),
+        (Join-Path $workspaceRoot 'payload\profile-web'),
+        (Join-Path $workspaceRoot 'build\payload\profile-web')
+    )
+    foreach ($c in $candidates) {
+        if (Test-Path -LiteralPath $c -PathType Container) { $payloadSrc = $c; break }
+    }
 }
 $hasPayload = $false
-if (Test-Path -LiteralPath $payloadSrc -PathType Container) {
+$payloadPresetUsed = 'none'
+if ($payloadSrc) {
     $payloadDst = Join-Path $tmpPath '.discpersona\payload\profile-web'
     Copy-Tree -Source $payloadSrc -Destination $payloadDst
     $hasPayload = $true
-    Write-Ok "payload 已复制（$(Get-TreeFileCount $payloadDst) 个文件）"
+    $payloadPresetUsed = $preset
+    Write-Ok "payload 已复制（$(Get-TreeFileCount $payloadDst) 个文件，预设 $preset）"
+} elseif ($preset -eq 'none') {
+    Write-Skip '按 -PayloadPreset none 打包纯人设盘：人格 DSH 不带任何预装插件'
 } else {
-    Write-Skip '没有 payload\profile-web 也没有 build\payload\profile-web：将打包纯人设盘（跑 tools\New-ProfilePayload.ps1 可以补）'
+    Write-Skip ('没有找到预设 ' + $preset + ' 的 payload：将打包纯人设盘。跑 tools\New-ProfilePayload.ps1 -Preset ' + $preset + ' 可以补')
+}
+
+# 把用到哪个插件包写进 meta.json（输出副本），Studio / 启动器 / 人都能看出来
+try {
+    $metaOutPath = Join-Path $tmpPath 'persona\meta.json'
+    if (Test-Path -LiteralPath $metaOutPath -PathType Leaf) {
+        $metaObj = (Read-TextFile $metaOutPath) | ConvertFrom-Json
+        $pluginNames = @()
+        if ($hasPayload) {
+            $pjPath = Join-Path $tmpPath '.discpersona\payload\profile-web\payload.json'
+            if (Test-Path -LiteralPath $pjPath -PathType Leaf) {
+                $pj = (Read-TextFile $pjPath) | ConvertFrom-Json
+                foreach ($item in @(Get-JsonProp $pj 'plugins')) {
+                    $n = [string](Get-JsonProp $item 'name')
+                    if ($n) { $pluginNames += $n }
+                }
+            }
+        }
+        $payloadInfo = [ordered]@{
+            preset  = $payloadPresetUsed
+            plugins = @($pluginNames)
+        }
+        $metaObj | Add-Member -NotePropertyName 'payload' -NotePropertyValue $payloadInfo -Force
+        Write-TextFile $metaOutPath ((Get-JsonTextForFile $metaObj) + "`r`n") $script:EncUtf8NoBom
+        Write-Ok ('meta.json 记录插件包：' + $payloadPresetUsed + '（' + (@($pluginNames).Count) + ' 个插件）')
+    }
+} catch {
+    Add-Warn ('写 meta.json 的插件包信息失败：' + $_.Exception.Message)
 }
 
 # autorun.inf

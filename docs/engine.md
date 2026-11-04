@@ -90,7 +90,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<disc>\engine\launch.ps
 5. **准备人格目录**：建 `home\ logs\ workspace\`，写探针文件验证真实可写 → 失败 E06（报完整路径）。
 6. **读人设（房间优先）**：见第 3.1 节——房间里有 `persona\persona.yml` 就用房间的，没有就先把盘上的整份固化进房间；
    再从生效的那份 `persona.yml` 取 `system_prompt: |` 块标量（解析不出 → E08），从 `meta.json` 取 `name` / `version`
-   （缺省「未命名」/「1.0.0」）。
+   （缺省「爱丽丝」/「1.0.0」）。
 7. **单实例**：读 `home\.lock`，PID 存活且启动时间对得上 → 直接用 `state.json` 的 `lastUrl` 打开浏览器，打印「这个孩子已经在醒着了：<url>」，**退出码 0**（E10）。
 8. **首启准备**（仅当 `home\profiles\web` 不存在）：
    - 若光盘有 `.discpersona\payload\profile-web\`（兼容 `profile-persona`、`payload\` 平铺）→ 整目录复制过去，并记下插件名（`payload.json`）；
@@ -128,7 +128,18 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<disc>\engine\launch.ps
 ### 3.2 预装插件载荷（payload）
 
 盘上 `.discpersona\payload\profile-web\` 是一份**打包时**准备好的 `profiles\web`（`package.json` + `cordis.yml` + `node_modules`），
-由 `tools\New-ProfilePayload.ps1` 生成：临时 home 里 `dsh plugin add dsh-soul-md dsh-persona-dafeiyu` → 剥掉 `.cache` / `.pnpm-store` → 写 `payload.json`。
+由 `tools\New-ProfilePayload.ps1` 按预设生成：临时 home 里 `dsh plugin add <预设的包>` → 剥掉 `.cache` / `.pnpm-store` → 写 `payload.json`（含 `preset`、`dshVersion`、`plugins[]`）。
+
+四组预设（`New-Disc.ps1 -PayloadPreset`，Studio 的「07 出厂」页同款）：
+
+| preset | 插件 | 体积 |
+| --- | --- | --- |
+| `none` | —— | 0（不写 `.discpersona\payload\`） |
+| `comfort` | `dsh-soul-md`、`dsh-persona-dafeiyu` | ~0.49 MB |
+| `token` | `dsh-context-compress`、`dsh-faster-compress`、`dsh-read-image-compress` | ~0.58 MB |
+| `full` | 以上五个 | ~0.87 MB |
+
+`none` 不打载荷，引擎走冷启动生成 vanilla profile；`state.json.payloadPreset` 记 `none`。
 
 首启时整份复制到 `home\profiles\web`，于是这个人一睁眼就有记忆工具和人设库，不需要联网装插件。
 
@@ -141,7 +152,8 @@ for ($pass = 1; $pass -le 2; $pass++)
 ```
 
 日志里会出现「带插件载荷启动失败，丢弃预打包 profile，回退纯人设重试一次」。人设本身走 patch，不依赖插件，
-所以回退后人还是那个人，只是少了 `memory_*` 工具。`state.json.payloadPlugins` 记录这次实际用上的插件，回退时为空。
+所以回退后人还是那个人，只是少了 `memory_*` 工具。`state.json.payloadPlugins` 记录这次实际用上的插件，
+`state.json.payloadPreset` 记录用的是哪组预设（`none` / `comfort` / `token` / `full`），回退时插件列表为空但预设保留。
 
 ### 3.3 同步人设卡（dsh-persona-dafeiyu）
 
@@ -172,7 +184,7 @@ dsh 的默认工作区是 `%USERPROFILE%\Documents\deepseek-harness\default-work
   "global": {"initialized": true, "defaultWorkspaceId": "<guid>",
              "workspaceIds": ["<guid>"], "archivedSessionIds": [], "pinnedSessionIds": []},
   "tables": {"workspaces": {"<guid>": {"path": "<房间>\workspace",
-                                        "title": "蓝色大肥鱼的房间",
+                                        "title": "天童爱丽丝的房间",
                                         "sessionIds": [], "createdAt": "...", "updatedAt": "..."}}} }
 ```
 
@@ -184,7 +196,7 @@ dsh 的默认工作区是 `%USERPROFILE%\Documents\deepseek-harness\default-work
 - 因此 `Sync-DPWorkspace` 用 `ConvertTo-DPJsonString` 手工拼 JSON，`sessionIds` 显式输出 `[]`。
   同 path 的旧记录会复用 guid 与已有 `sessionIds`。
 
-工作区 title 是 `<人设名>的房间`，所以侧栏显示「蓝色大肥鱼的房间」，不是「默认工作区」。
+工作区 title 是 `<人设名>的房间`，所以侧栏显示「天童爱丽丝的房间」，不是「默认工作区」。
 
 ---
 

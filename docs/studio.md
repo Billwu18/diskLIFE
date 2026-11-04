@@ -61,7 +61,20 @@ SillyTavern / Risu / 酒馆系工具导出的角色卡可以直接拖进来，�
 | 04 性格与底线 | 三个性格关键词、会/不会做的事、硬底线 | `system_prompt` + `AGENTS.md` 的家规 |
 | 05 仪式感 | 主题色、首启/再启/休眠文案、思考中提示 | `meta.json` 的 `theme` / `boot` |
 | 06 种子与头像 | 初始记忆（两页 markdown）、头像 | `seed/*.md`、`avatar.png` |
-| 07 出厂 | 校验 + 导出 + 打包 + ISO + 刻录 | 磁盘 |
+| 07 出厂 | **选插件包** + 校验 + 导出 + 打包 + ISO + 刻录 | 磁盘 |
+
+「07 出厂」最上面是**插件包**选择（四选一，卡片上标了体积和具体插件）：
+
+| 预设 | 说明 |
+| --- | --- |
+| `none` | 不带任何插件，启动最快，只要「插盘就能聊天」 |
+| `comfort` | 对话舒适包：人设卡、文件式记忆、人设库 / 免重启切换（默认） |
+| `token` | 省 token 包：历史软压缩、后台预备摘要、图片先压小 |
+| `full` | 两套都要 |
+
+选中的预设会随 `/api/build` 传到打包器（`-PayloadPreset`），最终写进 `persona\meta.json` 的 `payload.preset`
+与插件清单；卡片上的「未构建」表示仓库里没有这份预置载荷，先跑
+`tools\New-ProfilePayload.ps1 -Preset <preset> -Out payload\<preset>\profile-web`。
 
 > 版本固定写 `1.0.0`（升级走 `start.cmd -UpgradePersona`）；CV 属于「作品侧信息」，不参与人设构建，因此表单里没有这两项。
 
@@ -80,7 +93,7 @@ SillyTavern / Risu / 酒馆系工具导出的角色卡可以直接拖进来，�
 ## 导出与打包
 
 - **导出人设包**：写 `persona/<slug>/`（`persona.yml`、`meta.json`、`AGENTS.md`、`card.json`、`avatar.png`、`seed/`）。
-  这是可复用的人设包，和 `examples/sample-persona/` 同级。
+  这是可复用的人设包，和 `examples/demo-aris/persona/` 同级。
 - **打包光盘目录**：调 `tools/New-Disc.ps1`，产物在 `build/<slug>/`（可烧录目录树，含 `engine/`、`pad.bin`、manifest）。
 - **生成 ISO**：调 `tools/New-Iso.ps1`，产物 `build/<slug>.iso`（ISO9660 + Joliet，中文长文件名不截断）。
 - **刻录**：调 `tools/Burn-Iso.ps1`，先列光驱，再写入；结束行是 `BURN_OK` / `BURN_FAIL Bxx 原因`。
@@ -100,11 +113,11 @@ SillyTavern / Risu / 酒馆系工具导出的角色卡可以直接拖进来，�
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/env` | dsh 版本、光驱、已有的人设包、插件载荷、AI 是否可用 |
+| GET | `/api/env` | dsh 版本、光驱、已有的人设包、插件载荷、**四组插件包预设（`payloadPresets[]`：preset / label / desc / ok / sizeBytes / plugins）**、AI 是否可用 |
 | GET | `/api/personas` | 扫描 `persona/*/` |
 | POST | `/api/load` | 读一个人设包回来（表单回填）；`{dir}` |
 | POST | `/api/export` | 写人设包；`{slug, files[{path,text\|base64}], overwrite}` |
-| POST | `/api/build` | 打包光盘目录；`{persona, out, reusePad, force}`。成功后会**顺手跑一遍 `Test-Disc.ps1`**，响应里 `testOk` / `testOutput` 就是那 36 项静态校验的结果（不通过不影响目录生成，但界面会标红） |
+| POST | `/api/build` | 打包光盘目录；`{persona, out, reusePad, force, payload}`，`payload` 为 `none` / `comfort` / `token` / `full`。成功后会**顺手跑一遍 `Test-Disc.ps1`**，响应里 `testOk` / `testOutput` 就是那 36 项静态校验的结果（不通过不影响目录生成，但界面会标红） |
 | POST | `/api/iso` | 生成 ISO；`{disc, iso}` |
 | POST | `/api/burn` | 刻录；`{iso, drive, async}`。`async: true` 时立刻返回 `{jobId}`，不阻塞界面 |
 | GET | `/api/job` | 查后台任务；`?id=…` → `{done, exitCode, output}`，前端每 700 ms 轮询一次 |
@@ -114,7 +127,7 @@ SillyTavern / Risu / 酒馆系工具导出的角色卡可以直接拖进来，�
 脚本化示例：
 
 ```powershell
-$body = @{ persona = 'examples/sample-persona'; out = 'build/sample'; reusePad = $true } | ConvertTo-Json
+$body = @{ persona = 'persona/aris'; out = 'build/aris'; reusePad = $true } | ConvertTo-Json
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:4791/api/build -Body $body -ContentType 'application/json'
 ```
 

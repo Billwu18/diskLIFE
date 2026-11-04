@@ -59,7 +59,9 @@ DeepSeek Harness 实例——它有自己的 home、自己的记忆、自己的�
 - **不依赖第三方刻录软件**：纯 PowerShell + IMAPI2（`Burn-Iso.ps1`），失败给 B01–B08 明确错误码，
   而不是 COM 堆栈。
 - **可选守望者**：托盘常驻脚本，插盘即拉起（Windows 仍会问一次确认，见 FAQ）。
-- **离线插件载荷**：盘上带 `dsh-soul-md` 与 `dsh-persona-dafeiyu`（均 MIT），预装成 profile 快照；
+- **四组离线插件包**：打包时选一组（`-PayloadPreset`），首启不需要联网——`none`（最快）、
+  `comfort`（人设卡 + 文件式记忆 + 人设库）、`token`（`dsh-context-compress` + `dsh-faster-compress` +
+  `dsh-read-image-compress`，长对话更省 token）、`full`（五个都要，约 0.87 MB）；
   万一加载失败，启动器会自动回退到原生 profile。
 - **失败说得清**：每个错误都是中文说明 + 错误码（E01–E10），不静默退出；`E10` 表示「已经在跑」，
   退出码 0 并给出已有的 URL。
@@ -164,9 +166,9 @@ card.json       # 可选：Character Card V2 副本，便于与其他工具互�
 | `tools/Test-Disc.ps1` | 36 项静态检查，输出 `PASS` / 失败列表 |
 | `tools/New-Iso.ps1` | 光盘目录 → ISO（IMAPI2，ISO 9660 + Joliet） |
 | `tools/Burn-Iso.ps1` | ISO → CD-R/CD-RW（IMAPI2，错误码 B01–B08） |
-| `tools/New-ProfilePayload.ps1` | 从 npm 重建 `payload/profile-web` 插件快照 |
+| `tools/New-ProfilePayload.ps1` | 从 npm 重建某一组插件包（`-Preset comfort|token|full`） |
 | `studio/` | 本地网页 + HTTP API（不需要 npm install、不需要构建） |
-| `payload/profile-web/` | 随盘预装的插件 profile（MIT，见第三方声明） |
+| `payload\<preset>\profile-web/` | 按预设分库的随盘插件 profile（MIT，见第三方声明） |
 | `examples/sample-persona/` | 完整可用的原创示例人设 |
 | `docs/` | 引擎内幕、光盘规范、Studio 手册 |
 
@@ -212,3 +214,23 @@ Windows 仍会问一次（AutoPlay「选择要执行的操作」），这是光�
 MIT，见 [LICENSE](LICENSE)。第三方组件保留各自许可证（[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)）。
 
 DiscPersona 是独立项目，与 DeepSeek、与任何游戏/动画发行方均无关联、未获其背书或赞助。
+
+## 插件包
+
+下面四组都随仓库预置好了，打包即用，首次启动不需要联网。
+
+| 预设 | 体积 | 插件 | 适合 |
+| --- | --- | --- | --- |
+| `none` | 0 | —— | 最轻最快，只要「插盘就能聊天」 |
+| `comfort` | 0.49 MB | `dsh-soul-md`、`dsh-persona-dafeiyu` | 人设卡、文件式记忆、免重启换人设 |
+| `token` | 0.58 MB | `dsh-context-compress`、`dsh-faster-compress`、`dsh-read-image-compress` | 聊得久、贴图多，不想很快顶到上下文上限 |
+| `full` | 0.87 MB | 以上五个 | 两样都要 |
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\New-Disc.ps1 -Persona examples\sample-persona -Out examples\sample-disc -PayloadPreset token
+```
+
+Studio 的「07 出厂」页也有对应的四张卡片。用的是哪一组，会写进 `persona\meta.json` 的
+`payload.preset` / `payload.plugins`，以及房间 `state.json` 的 `payloadPreset` / `payloadPlugins`。
+
+## 运行要求

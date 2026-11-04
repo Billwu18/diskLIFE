@@ -60,7 +60,14 @@ payload\
 - 起不来时引擎删掉 `profiles\web`、冷启一份 vanilla profile 重试 —— **载荷是可选的，人设不是**。
 - 清单里的 SHA-256 覆盖载荷目录，被改动会触发 E03（与其它文件同一规则）。
 
-生成：`powershell -File tools\New-ProfilePayload.ps1 -Force`（默认 `build\payload\profile-web`）。
+`payload.json` 里还有 `preset` 字段，标明这组载荷叫什么（`comfort` / `token` / `full`）；打包时由
+`tools\New-Disc.ps1 -PayloadPreset <preset>` 选中，并把预设名与插件清单写进 `persona\meta.json` 的 `payload` 对象：
+
+```json
+"payload": { "preset": "token", "plugins": ["dsh-context-compress", "dsh-faster-compress", "dsh-read-image-compress"] }
+```
+
+生成：`powershell -File tools\New-ProfilePayload.ps1 -Preset <preset> -Out payload\<preset>\profile-web -Force`。
 
 ## 2. pad.bin
 
@@ -90,7 +97,7 @@ discID = lower( hex( sha256( pad.bin 的 512 字节 ))[0..16] )
 {
   "format": 1,
   "discID": "4fbd5c230b2854f6",
-  "name": "蓝色大肥鱼",
+  "name": "天童爱丽丝",
   "version": "1.0.0",
   "builtAt": "2026-11-03T16:37:03Z",
   "engine": "1.0.0",

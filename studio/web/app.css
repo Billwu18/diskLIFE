@@ -414,3 +414,20 @@ input[type="color"] { height: 38px; padding: 3px; cursor: pointer; }
 .import-meta { margin-left: 8px; color: var(--muted); font-family: var(--mono); font-size: 11px; }
 .import-todo { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
 .panel.is-drag { outline: 2px dashed var(--accent); outline-offset: 6px; border-radius: 12px; }
+
+/* ---- 出厂：插件包选项 ---- */
+.payload-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.payload-card {
+  display: flex; align-items: flex-start; gap: 10px; cursor: pointer;
+  padding: 12px 14px; border: 1px solid rgba(255,255,255,.10); border-radius: 10px;
+  background: rgba(255,255,255,.02); transition: border-color .15s, background .15s;
+}
+.payload-card:hover { border-color: rgba(91,200,232,.45); background: rgba(91,200,232,.05); }
+.payload-card.is-on { border-color: var(--accent); background: rgba(91,200,232,.10); }
+.payload-card.is-off { opacity: .45; cursor: not-allowed; }
+.payload-card input { margin-top: 3px; accent-color: var(--accent); }
+.payload-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.payload-main b { font-size: 14px; color: var(--fg, #e8f1f5); font-weight: 600; }
+.payload-main em { font-size: 12px; font-style: normal; color: rgba(232,241,245,.62); line-height: 1.5; }
+.payload-main code { font-size: 11px; color: rgba(232,241,245,.45); word-break: break-all; }
+.payload-size { font-size: 11px; color: rgba(232,241,245,.45); white-space: nowrap; }

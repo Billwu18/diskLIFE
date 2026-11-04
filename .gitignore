@@ -30,8 +30,9 @@ desktop.ini
 # payload/ is intentionally committed (offline profile snapshot);
 # everything else node-ish is not.
 node_modules/
-!payload/profile-web/node_modules/
-!payload/profile-web/node_modules/**
+# the preset snapshots are the point of this repo: keep their node_modules
+!payload/*/profile-web/node_modules/
+!payload/*/profile-web/node_modules/**
 
 # ---- misc ----
 *.log

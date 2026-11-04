@@ -257,12 +257,20 @@ function Test-UnderRoot {
 
 function Invoke-ChildScript {
     param([string]$Script, [string[]]$Arguments)
+    # 走临时文件而不是直接 & 捕获：子进程的中文输出是系统代码页，直接捕获会被父进程按
+    # 当前控制台编码二次解码成乱码。Read-JobText 会先试 UTF-8、不合法再退回系统代码页。
     $ps = 'powershell.exe'
-    $args = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Script) + $Arguments
-    $out = & $ps @args 2>&1
-    $code = $LASTEXITCODE
-    $text = ($out | Out-String).Trim()
-    return [pscustomobject]@{ ExitCode = $code; Output = $text }
+    $tmpRoot = Join-Path $env:TEMP 'discpersona-studio-calls'
+    if (-not (Test-Path -LiteralPath $tmpRoot)) { New-Item -ItemType Directory -Force -Path $tmpRoot | Out-Null }
+    $stamp = [guid]::NewGuid().ToString('N').Substring(0, 8)
+    $outFile = Join-Path $tmpRoot ($stamp + '.out.txt')
+    $errFile = Join-Path $tmpRoot ($stamp + '.err.txt')
+    $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Script) + $Arguments
+    $proc = Start-Process -FilePath $ps -ArgumentList ($argList | ForEach-Object { if ($_ -match '^-') { $_ } elseif ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } }) `
+        -NoNewWindow -Wait -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+    $text = ((Read-JobText -Path $outFile) + "`n" + (Read-JobText -Path $errFile)).Trim()
+    Remove-Item -LiteralPath $outFile, $errFile -Force -ErrorAction SilentlyContinue
+    return [pscustomobject]@{ ExitCode = $proc.ExitCode; Output = $text }
 }
 
 # ---------------------------------------------------------------- 异步任务
@@ -379,6 +387,52 @@ function Get-DriveList {
     return $items
 }
 
+function Get-PayloadPresetList {
+    $result = @()
+    $noneItem = [ordered]@{
+        preset    = 'none'
+        label     = '不带插件'
+        desc      = '最快最干净，人格 DSH 只带人设。适合只要「插盘就聊天」的人。'
+        ok        = $true
+        sizeBytes = 0
+        plugins   = @()
+    }
+    $result += [pscustomobject]$noneItem
+    $labels = @{
+        comfort = @('对话舒适包', '人设卡 + 文件式记忆 + 人设库，三档作用域、免重启切换。')
+        token   = @('省 token 包', '软压缩历史、后台预备摘要、图片进上下文前先压小。聊得久也不容易顶到上限。')
+        full    = @('全套', '舒适包 + 省 token 包，插件最多，首次启动稍慢一点。')
+    }
+    foreach ($preset in @('comfort', 'token', 'full')) {
+        $dir = Join-Path $workspaceRoot ('payload\' + $preset + '\profile-web')
+        if (-not (Test-Path -LiteralPath (Join-Path $dir 'payload.json'))) {
+            $dir = Join-Path $workspaceRoot ('build\payload\' + $preset + '\profile-web')
+        }
+        $ok = Test-Path -LiteralPath (Join-Path $dir 'payload.json')
+        $plugins = @()
+        $sizeBytes = 0
+        if ($ok) {
+            try {
+                $pj = Get-Content -LiteralPath (Join-Path $dir 'payload.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+                foreach ($pl in @($pj.plugins)) { if ($pl) { $plugins += ([string]$pl.name + ' ' + [string]$pl.version) } }
+            } catch { }
+            try {
+                $sizeBytes = (Get-ChildItem -LiteralPath $dir -Recurse -File -Force | Measure-Object -Property Length -Sum).Sum
+            } catch { }
+        }
+        $lbl = $labels[$preset]
+        $result += [pscustomobject][ordered]@{
+            preset    = $preset
+            label     = $lbl[0]
+            desc      = $lbl[1]
+            ok        = $ok
+            sizeBytes = [int64]$sizeBytes
+            plugins   = @($plugins)
+        }
+    }
+    return $result
+}
+
 function Get-PersonaList {
     $list = @()
     if (-not (Test-Path -LiteralPath $personaRootDefault)) { return $list }
@@ -448,13 +502,13 @@ try {
             if ($path.StartsWith('/api/')) {
                 switch -Regex ($path) {
                     '^/api/env$' {
-                        $payloadDir = Join-Path $workspaceRoot 'payload\profile-web'
-                        if (-not (Test-Path -LiteralPath (Join-Path $payloadDir 'payload.json'))) {
-                            $payloadDir = Join-Path $workspaceRoot 'build\payload\profile-web'
-                        }
+                        $payloadPresets = @(Get-PayloadPresetList)
                         $payloadInfo = $null
-                        if (Test-Path -LiteralPath (Join-Path $payloadDir 'payload.json')) {
-                            try { $payloadInfo = Get-Content -LiteralPath (Join-Path $payloadDir 'payload.json') -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
+                        foreach ($pp in $payloadPresets) {
+                            if ($pp.preset -eq 'comfort' -and $pp.ok) { $payloadInfo = $pp; break }
+                        }
+                        if (-not $payloadInfo) {
+                            foreach ($pp in $payloadPresets) { if ($pp.ok) { $payloadInfo = $pp; break } }
                         }
                         $dshVersion = ''
                         try {
@@ -468,7 +522,8 @@ try {
                             dshVersion = ([string]$dshVersion).Trim()
                             drives     = @(Get-DriveList)
                             personas   = @(Get-PersonaList)
-                            payload    = if ($payloadInfo) { [ordered]@{ ok = $true; plugins = @($payloadInfo.plugins); builtAt = [string]$payloadInfo.builtAt } } else { [ordered]@{ ok = $false } }
+                            payload    = if ($payloadInfo) { [ordered]@{ ok = $true; preset = [string]$payloadInfo.preset; plugins = @($payloadInfo.plugins); builtAt = [string]$payloadInfo.builtAt } } else { [ordered]@{ ok = $false } }
+                            payloadPresets = $payloadPresets
                             hasKey     = [bool](Get-StudioApiKey)
                         })
                         continue
@@ -574,7 +629,11 @@ try {
                         if (-not [System.IO.Path]::IsPathRooted($outDir)) { $outDir = Join-Path $workspaceRoot $outDir }
                         if (-not (Test-UnderRoot -Path $outDir -Roots @($workspaceRoot))) { Send-Fail -Context $ctx -Message '输出目录必须在本工作区内。' -Code 'S22'; continue }
                         $script = Join-Path $workspaceRoot 'tools\New-Disc.ps1'
-                        $args = @('-Persona', $personaDir, '-Out', $outDir)
+                        $preset = if ($body.payload) { [string]$body.payload } else { 'comfort' }
+                        if ($preset -notin @('none', 'comfort', 'token', 'full')) {
+                            Send-Fail -Context $ctx -Message ('不认识的插件包预设：' + $preset) -Code 'S23'; continue
+                        }
+                        $args = @('-Persona', $personaDir, '-Out', $outDir, '-PayloadPreset', $preset)
                         if ($body.reusePad) { $args += '-ReusePad' }
                         if ($body.force) { $args += '-Force' }
                         $r = Invoke-ChildScript -Script $script -Arguments $args
@@ -594,7 +653,7 @@ try {
                         }
                         Send-Json -Context $ctx -Object ([ordered]@{
                             ok = ($r.ExitCode -eq 0); code = 'BUILD'; exitCode = $r.ExitCode
-                            discID = $discID; outDir = $outDir; output = $r.Output
+                            discID = $discID; outDir = $outDir; output = $r.Output; payloadPreset = $preset
                             testOk = $testOk; testOutput = $testOut
                         })
                         continue

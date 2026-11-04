@@ -48,12 +48,12 @@
         </div>
         <div class="import-result" id="import-result" hidden></div>
         <div class="grid2">
-          <label class="field"><span>名字 <i>必填</i></span><input id="f-name" placeholder="例：蓝色大肥鱼" /></label>
-          <label class="field"><span>日文名</span><input id="f-nameJp" placeholder="例：あおぶと" /></label>
+          <label class="field"><span>名字 <i>必填</i></span><input id="f-name" placeholder="例：天童爱丽丝" /></label>
+          <label class="field"><span>日文名</span><input id="f-nameJp" placeholder="例：天童アリス" /></label>
           <label class="field"><span>英文名</span><input id="f-english" placeholder="例：Tendou Aris" /></label>
           <label class="field"><span>目录名 / slug <i>必填</i></span><input id="f-slug" placeholder="aris" /></label>
           <label class="field"><span>来自哪里</span><input id="f-source" placeholder="例：蔚蓝档案 / 原创 / 某部小说" /></label>
-          <label class="field"><span>组织 / 学校</span><input id="f-org" placeholder="例：光驱底部的那一格水" /></label>
+          <label class="field"><span>组织 / 学校</span><input id="f-org" placeholder="例：千年科学学园 · 游戏开发部" /></label>
           <label class="field"><span>身份 / 职务</span><input id="f-role" placeholder="例：勇者（自称）／试玩与验收" /></label>
           <label class="field"><span>生日</span><input id="f-birthday" placeholder="03-25" /></label>
           <label class="field"><span>身高 cm</span><input id="f-height" placeholder="152" /></label>
@@ -89,7 +89,7 @@
         <h2>她怎么说话</h2>
         <p class="hint">人设的效果，八成落在这一页。给她具体的口癖、称呼和句子长度。</p>
         <div class="grid2">
-          <label class="field"><span>自称</span><input id="f-selfRef" placeholder="例：蓝色大肥鱼 / 我" /></label>
+          <label class="field"><span>自称</span><input id="f-selfRef" placeholder="例：爱丽丝 / 我" /></label>
           <label class="field"><span>怎么称呼对方</span><input id="f-userRef" placeholder="例：老师" /></label>
         </div>
         <label class="field"><span>说话风格（每行一条）</span>
@@ -97,7 +97,7 @@
 用 RPG 的语言理解世界：任务是「委托」，修 bug 是「讨伐魔物」。"></textarea>
         </label>
         <label class="field"><span>口癖 / 标志性台词（每行一条）</span>
-          <textarea id="f-quirks" rows="4" placeholder="句首偶尔「咕噜！」——升级的声音。"></textarea>
+          <textarea id="f-quirks" rows="4" placeholder="句首偶尔「邦邦咔邦！」——升级的声音。"></textarea>
         </label>
         <label class="field"><span>不要说 / 不要做（每行一条）</span>
           <textarea id="f-forbidden" rows="4" placeholder="不要用颜文字。
@@ -165,7 +165,11 @@
       <!-- 7 出厂 -->
       <div class="panel" data-panel="7">
         <h2>出厂</h2>
-        <p class="hint">先导出人设包，再打成光盘目录，最后（可选）生成 ISO 并刻录。</p>
+        <p class="hint">先选插件包，再导出人设包、打成光盘目录，最后（可选）生成 ISO 并刻录。</p>
+        <div class="field">
+          <label>插件包<span class="tip">随盘预装的插件，首启时复制进人格房间；不联网也能用</span></label>
+          <div id="payload-options" class="payload-options"></div>
+        </div>
         <div class="ship">
           <div class="ship-step">
             <b>1</b>

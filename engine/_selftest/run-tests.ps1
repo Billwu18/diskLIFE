@@ -59,19 +59,19 @@ function New-TestDisc {
     $personaYml = @"
 # 自测用假人设（DiscPersona selftest）
 # 这段注释应当被忽略
-name: 蓝色大肥鱼
+name: 爱丽丝
 version: 1.2.3
 system_prompt: |
-  你是蓝色大肥鱼，住在光盘里的那条鱼。
-  你说话轻快、偶尔用「咕噜」当口头禅。
+  你是爱丽丝，千年科学学园游戏开发部的成员。
+  你说话轻快、偶尔用「邦邦咔邦」当口头禅。
 
   你喜欢把复杂的事讲得很简单。
 "@
     if ($NoSystemPrompt) {
-        $personaYml = "# 故意缺少 system_prompt`nname: 蓝色大肥鱼`nversion: 1.2.3`n"
+        $personaYml = "# 故意缺少 system_prompt`nname: 爱丽丝`nversion: 1.2.3`n"
     }
     Save-Text -Path (Join-Path $Dir 'persona\persona.yml') -Text $personaYml
-    Save-Text -Path (Join-Path $Dir 'persona\meta.json') -Text ('{"name":"蓝色大肥鱼","personaVersion":"1.2.3","format":1}')
+    Save-Text -Path (Join-Path $Dir 'persona\meta.json') -Text ('{"name":"爱丽丝","personaVersion":"1.2.3","format":1}')
     Save-Text -Path (Join-Path $Dir 'persona\seed\README.md') -Text '这是 seed 里的一颗种子。'
     Save-Text -Path (Join-Path $Dir 'persona\AGENTS.md') -Text '这是光盘上的 AGENTS.md（首启写一次）。'
 
@@ -166,7 +166,7 @@ if ($patchPath -and (Test-Path -LiteralPath $patchPath)) {
     Write-Host '  —— persona.patch.yml ——' -ForegroundColor DarkGray
     foreach ($line in ($patchText -split "`r?`n")) { if ($line.Length -gt 0) { Write-Host ('  | ' + $line) -ForegroundColor DarkGray } }
     $patchOk = ($patchText -match '(?m)^- id: system-prompt') -and ($patchText -match 'personaPrefix: \|') -and
-               ($patchText -match '你是蓝色大肥鱼') -and ($patchText -match '咕噜') -and
+               ($patchText -match '你是爱丽丝') -and ($patchText -match '邦邦咔邦') -and
                ($patchText -notmatch '这段注释应当被忽略')
 }
 Add-Result 'T1-patch' 'patch 结构与内容' $patchOk '检查 - id: system-prompt / personaPrefix: | / 正文两行均在内'
@@ -176,7 +176,7 @@ $statePath1 = if ($personaRoot1) { Join-Path $personaRoot1.FullName 'state.json'
 if ($statePath1 -and (Test-Path -LiteralPath $statePath1)) {
     $st = Get-Content -LiteralPath $statePath1 -Raw -Encoding UTF8 | ConvertFrom-Json
     Write-Host ('  state.json: ' + ($st | ConvertTo-Json -Compress)) -ForegroundColor DarkGray
-    $stateOk = ($st.bootCount -eq 1) -and $st.discID -and $st.name -eq '蓝色大肥鱼' -and $st.personaVersion -eq '1.2.3' -and $st.lastPort -eq 34567
+    $stateOk = ($st.bootCount -eq 1) -and $st.discID -and $st.name -eq '爱丽丝' -and $st.personaVersion -eq '1.2.3' -and $st.lastPort -eq 34567
 }
 Add-Result 'T1-state' 'state.json 字段' $stateOk 'discID/name/personaVersion/bootCount=1/lastPort=34567'
 
@@ -276,7 +276,7 @@ if ($personaRoot1) { $roomPersona = Join-Path $personaRoot1.FullName 'persona\pe
 if ($roomPersona -and (Test-Path -LiteralPath $roomPersona) -and $statePath1) {
     $roomText = [System.IO.File]::ReadAllText($roomPersona, [System.Text.Encoding]::UTF8)
     $st10 = Get-Content -LiteralPath $statePath1 -Raw -Encoding UTF8 | ConvertFrom-Json
-    $solidOk = ($roomText -match '咕噜') -and ($st10.personaSource -eq 'room')
+    $solidOk = ($roomText -match '邦邦咔邦') -and ($st10.personaSource -eq 'room')
     Write-Host ('  personaSource=' + $st10.personaSource + '  personaVersion=' + $st10.personaVersion) -ForegroundColor DarkGray
 }
 Add-Result 'T10' '首次运行即固化' $solidOk '房间 persona\persona.yml 有正文，state.personaSource=room'
@@ -285,7 +285,7 @@ Add-Result 'T10' '首次运行即固化' $solidOk '房间 persona\persona.yml �
 Write-Case 'T11' '改房间人设生效；盘上版本更高时只记 pendingPersonaUpgrade，不覆盖'
 if ($roomPersona -and (Test-Path -LiteralPath $roomPersona)) {
     $roomText = [System.IO.File]::ReadAllText($roomPersona, [System.Text.Encoding]::UTF8)
-    $roomText = $roomText.Replace('你是蓝色大肥鱼，住在光盘里的那条鱼。', '你是房间里改过的人设。')
+    $roomText = $roomText.Replace('你是爱丽丝，千年科学学园游戏开发部的成员。', '你是房间里改过的人设。')
     Save-Text -Path $roomPersona -Text $roomText
 }
 
@@ -294,9 +294,9 @@ $disc11 = Join-Path $root 'disc-new-version'
 Copy-Item -LiteralPath $discBase -Destination $disc11 -Recurse -Force
 $yml11 = Join-Path $disc11 'persona\persona.yml'
 $ymlText = [System.IO.File]::ReadAllText($yml11, [System.Text.Encoding]::UTF8)
-$ymlText = $ymlText.Replace('你是蓝色大肥鱼，住在光盘里的那条鱼。', '你是盘上的一版新人设。')
+$ymlText = $ymlText.Replace('你是爱丽丝，千年科学学园游戏开发部的成员。', '你是盘上的一版新人设。')
 Save-Text -Path $yml11 -Text $ymlText
-Save-Text -Path (Join-Path $disc11 'persona\meta.json') -Text '{"name":"蓝色大肥鱼","personaVersion":"1.3.0","format":1}'
+Save-Text -Path (Join-Path $disc11 'persona\meta.json') -Text '{"name":"爱丽丝","personaVersion":"1.3.0","format":1}'
 $files11 = [ordered]@{}
 foreach ($rel in @('persona/persona.yml', 'persona/meta.json', 'pad.bin')) {
     $full11 = Join-Path $disc11 ($rel -replace '/', '\')
