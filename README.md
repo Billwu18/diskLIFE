@@ -1,4 +1,4 @@
-# DiscPersona
+# diskLIFE
 
 **A persona you can hold.** Burn a character onto a CD-R; insert the disc and a private
 [DeepSeek Harness](https://github.com/deepseek-ai) instance boots up already inhabited by that
@@ -6,7 +6,7 @@ persona — its own home directory, its own memory, its own plugins. Eject the d
 stays on disk. No accounts, no cloud, no DRM.
 
 <p align="center">
-  <img src="docs/img/studio.png" alt="DiscPersona Studio" width="820">
+  <img src="docs/img/studio.png" alt="diskLIFE Studio" width="820">
 </p>
 
 > English is the primary language of this file. 中文说明见 [README.zh-CN.md](README.zh-CN.md).
@@ -14,6 +14,10 @@ stays on disk. No accounts, no cloud, no DRM.
 > optical-media rules, and the fact that this project is **not** affiliated with anyone.
 
 ---
+
+> **Naming.** The project is **diskLIFE**; the launcher still creates its runtime folder as
+> `<dsh install root>\DiscPersona\personas\<discID>` (and `%LOCALAPPDATA%\DiscPersona\personas`
+> as the fallback). That folder name is part of the on-disk contract, so it keeps the old spelling.
 
 ## What it actually does
 
@@ -107,8 +111,8 @@ macOS/Linux are **not** supported: the launcher, the burner and the watcher are 
 ## Quick start (5 minutes, no disc needed)
 
 ```powershell
-git clone <this repo> DiscPersona
-cd DiscPersona
+git clone <this repo> diskLIFE
+cd diskLIFE
 
 # 1) build a disc tree from the bundled sample persona
 powershell -ExecutionPolicy Bypass -File tools\New-Disc.ps1 -Persona examples\sample-persona -Out examples\sample-disc
@@ -247,5 +251,6 @@ the disc persona — otherwise the plugin's built-in demo card would fight with 
 MIT — see [LICENSE](LICENSE). Third-party components keep their own licenses
 ([THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)).
 
-DiscPersona is an independent project. It is not affiliated with, endorsed by, or sponsored by
+diskLIFE is an independent project. It is not affiliated with, endorsed by, or sponsored by
 DeepSeek, or by any game/anime publisher whose characters a user might choose to encode on a disc.
+

@@ -148,6 +148,11 @@ New-SourceHome -Dir $srcHome
 $srcHomeNoCred = Join-Path $root 'source-home-nocred'
 New-SourceHome -Dir $srcHomeNoCred -NoCreds
 
+# 自测必须自带凭据来源：不能依赖跑测试那台机器上真实的主 home，
+# 否则 CI（没有登录过 DSH 的干净机器）会在 T1 直接 E07 失败。
+$savedRunSrc = $env:DISCPERSONA_SOURCE_HOME
+$env:DISCPERSONA_SOURCE_HOME = $srcHome
+
 $discBase = Join-Path $root 'disc-base'
 New-TestDisc -Dir $discBase
 
@@ -395,6 +400,7 @@ foreach ($r in $results) {
     Write-Host ('  [' + $mark + '] ' + $r.Id.PadRight(12) + ' ' + $r.Title)
 }
 $failed = @($results | Where-Object { -not $_.Pass })
+if ($null -eq $savedRunSrc) { Remove-Item Env:\DISCPERSONA_SOURCE_HOME -ErrorAction SilentlyContinue } else { $env:DISCPERSONA_SOURCE_HOME = $savedRunSrc }
 Write-Host ('  通过 ' + ($results.Count - $failed.Count) + '/' + $results.Count)
 Write-Host ('  临时目录：' + $root)
 Write-Host ''

@@ -1,11 +1,11 @@
-# DiscPersona · 人设的物理载体与开关
+# diskLIFE · 人设的物理载体与开关
 
 **一个你能拿在手里的人设。** 把角色刻进 CD-R，插盘即起一个**独立**的
 DeepSeek Harness 实例——它有自己的 home、自己的记忆、自己的插件；拔盘之后，那间房还在硬盘上。
 不联网、不要账号、不做 DRM。
 
 <p align="center">
-  <img src="docs/img/studio.png" alt="DiscPersona Studio" width="820">
+  <img src="docs/img/studio.png" alt="diskLIFE Studio" width="820">
 </p>
 
 > 本文件是中文说明；English first → [README.md](README.md)。
@@ -13,6 +13,10 @@ DeepSeek Harness 实例——它有自己的 home、自己的记忆、自己的�
 > 以及「本项目与任何厂商/作品无关」。
 
 ---
+
+> **关于名字。** 项目名是 **diskLIFE**；启动器创建的房间目录仍叫
+> `<dsh 安装根>\DiscPersona\personas\<discID>`（兜底 `%LOCALAPPDATA%\DiscPersona\personas`）。
+> 那个目录名属于磁盘契约，所以保留旧拼写。
 
 ## 它到底做了什么
 
@@ -83,8 +87,8 @@ macOS/Linux **不支持**：启动器、刻录、守望者都是 Windows 专属�
 ## 五分钟上手（不需要光盘）
 
 ```powershell
-git clone <本仓库> DiscPersona
-cd DiscPersona
+git clone <本仓库> diskLIFE
+cd diskLIFE
 
 # 1) 用自带示例人设打一张盘（输出到 examples/sample-disc）
 powershell -ExecutionPolicy Bypass -File tools\New-Disc.ps1 -Persona examples\sample-persona -Out examples\sample-disc
@@ -213,7 +217,7 @@ Windows 仍会问一次（AutoPlay「选择要执行的操作」），这是光�
 
 MIT，见 [LICENSE](LICENSE)。第三方组件保留各自许可证（[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)）。
 
-DiscPersona 是独立项目，与 DeepSeek、与任何游戏/动画发行方均无关联、未获其背书或赞助。
+diskLIFE 是独立项目，与 DeepSeek、与任何游戏/动画发行方均无关联、未获其背书或赞助。
 
 ## 插件包
 
@@ -234,3 +238,14 @@ Studio 的「07 出厂」页也有对应的四张卡片。用的是哪一组，�
 `payload.preset` / `payload.plugins`，以及房间 `state.json` 的 `payloadPreset` / `payloadPlugins`。
 
 ## 运行要求
+
+| | |
+| --- | --- |
+| 系统 | Windows 10 / 11（x64） |
+| Shell | Windows PowerShell 5.1（系统自带） |
+| 运行时 | 已安装并登录过的 DeepSeek Harness **0.2.x**（`dsh` 在 `PATH` 里） |
+| 可选 | 真刻盘需要一台 CD-R/CD-RW 光驱；没有光驱就挂载 ISO |
+| 磁盘 | 项目本身约 2 MB，每个人格房间几 MB（装了插件会多几 MB） |
+
+macOS / Linux **不支持**：启动器、刻录、守望者都是 Windows 专属（IMAPI2 + WMI）。
+只移植启动器是可行的；欢迎不破坏 Windows 的 PR。

@@ -185,21 +185,29 @@ function Import-DPLlmCredentials {
 
 function Get-DPSourceHome {
     <#
-      主 home 定位：DISCPERSONA_SOURCE_HOME > E:\dsh\dsh-data > %USERPROFILE%\.dsh
+      主 home 定位：DISCPERSONA_SOURCE_HOME > DSH_HOME > %USERPROFILE%\.dsh > %LOCALAPPDATA%\dsh
       返回候选列表里第一个存在 .credentials.yaml 的目录；都不存在返回 $null。
     #>
     param([string]$Explicit)
     $candidates = New-Object System.Collections.ArrayList
     if ($Explicit) { [void]$candidates.Add($Explicit) }
     if ($env:DISCPERSONA_SOURCE_HOME) { [void]$candidates.Add($env:DISCPERSONA_SOURCE_HOME) }
-    [void]$candidates.Add('E:\dsh\dsh-data')
-    if ($env:USERPROFILE) { [void]$candidates.Add((Join-Path $env:USERPROFILE '.dsh')) }
+    if ($env:DSH_HOME) { [void]$candidates.Add($env:DSH_HOME) }
+    if ($env:USERPROFILE) { [void]$candidates.Add([System.IO.Path]::Combine($env:USERPROFILE, '.dsh')) }
+    if ($env:LOCALAPPDATA) { [void]$candidates.Add([System.IO.Path]::Combine($env:LOCALAPPDATA, 'dsh')) }
 
     foreach ($c in $candidates) {
         if ([string]::IsNullOrWhiteSpace($c)) { continue }
         $full = Get-DPNormalizedPath -Path $c
         if (-not $full) { continue }
-        if (Test-Path -LiteralPath (Join-Path $full '.credentials.yaml')) { return $full }
+        # [System.IO.Path]::Combine does not validate the drive letter; Join-Path does and
+        # throws "Cannot find drive" on machines where the candidate path does not exist.
+        $credPath = [System.IO.Path]::Combine($full, '.credentials.yaml')
+        try {
+            if (Test-Path -LiteralPath $credPath) { return $full }
+        } catch {
+            continue
+        }
     }
     return $null
 }

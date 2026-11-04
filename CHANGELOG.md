@@ -4,6 +4,23 @@ All notable changes to this project. Format loosely follows [Keep a Changelog](h
 this project does not promise semantic versioning for the launcher — the **disc format** version is what
 matters for compatibility.
 
+## [0.2.1] - 2026-11-05
+
+### Fixed
+
+- **凭据来源不再硬编码**。`Get-DPSourceHome` 之前把 `E:\dsh\dsh-data`（开发机的主 home）写死成候选，
+  在**没有 E: 盘符的机器上** `Join-Path` 会抛 `Cannot find drive`，导致首次启动直接失败。
+  现在的顺序是：`-SourceHome` 参数 > `DISCPERSONA_SOURCE_HOME` > `DSH_HOME` > `%USERPROFILE%\.dsh` >
+  `%LOCALAPPDATA%\dsh`，路径拼接改用不校验盘符的 `[System.IO.Path]::Combine`，找不到就跳过并继续。
+- **自测不再依赖本机主 home**。`engine/_selftest/run-tests.ps1` 现在自己设置 `DISCPERSONA_SOURCE_HOME`
+  指向测试夹具，在没登录过 DSH 的干净机器（CI）上也能跑出 17/17。
+- `README.zh-CN.md` 的「运行要求」一节之前只剩标题，已补回内容。
+
+### Changed
+
+- 项目名在 README 中统一为 **diskLIFE**（运行时目录 `DiscPersona\personas\<discID>` 保持不变，属于磁盘契约，
+  两份 README 都加了「关于名字 / Naming」说明）。
+
 ## [0.2.0] - 2026-11-05
 
 ### Added
