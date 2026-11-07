@@ -152,12 +152,30 @@ function mediaInfo(tools, device) {
         args = ['-msinfo', 'dev=' + device];
     }
     const result = spawnSync(preferred.path, args, { encoding: 'utf8', timeout: 20000 });
-    if (result.status !== 0 || !result.stdout) return null;
-    const match = /(\d+)\s*,\s*(\d+)/.exec(result.stdout);
-    if (!match) return null;
-    const first = parseInt(match[1], 10);
-    const last = parseInt(match[2], 10);
-    return { blank: first === 0 && last === 0, raw: first + ',' + last, tool: preferred.name };
+    const text = ((result.stdout || '') + '\n' + (result.stderr || '')).trim();
+    const match = /(\d+)\s*,\s*(\d+)/.exec(text);
+    if (result.status === 0 && match) {
+        const first = parseInt(match[1], 10);
+        const last = parseInt(match[2], 10);
+        return { blank: first === 0 && last === 0, raw: first + ',' + last, tool: preferred.name };
+    }
+    if (preferred.name === 'xorriso') {
+        // -msinfo only works on appendable media. For blank/finalized CD-R, ask xorriso directly.
+        const info = spawnSync(preferred.path, ['-dev', device, '-list_formats'],
+            { encoding: 'utf8', timeout: 20000 });
+        const infoText = ((info.stdout || '') + '\n' + (info.stderr || '')).trim();
+        const status = /Media status\s*:\s*([^\n]+)/i.exec(infoText);
+        if (info.status === 0 && status) {
+            const statusText = status[1].trim();
+            const media = /Media current\s*:\s*([^\n]+)/i.exec(infoText);
+            return {
+                blank: /is blank/i.test(statusText),
+                raw: statusText + (media ? ' (' + media[1].trim() + ')' : ''),
+                tool: 'xorriso'
+            };
+        }
+    }
+    return null;
 }
 
 // Best-effort B02 probe: ask the writer whether this drive can burn at all.
@@ -374,8 +392,9 @@ function main() {
         args.push('dev=' + device, isoPath);
     }
 
-    out.line('  Writing with ' + preferred.name + ' (volume label ' +
-        (opts.volumeLabel || 'DISCPERSONA') + ')...');
+    out.line('  Writing with ' + preferred.name +
+        (opts.volumeLabel ? ' (volume label ' + opts.volumeLabel + ')' : '') +
+        ' (the volume label comes from the ISO itself)...');
     const result = spawnSync(preferred.path, args, {
         encoding: 'utf8',
         timeout: 60 * 60 * 1000,

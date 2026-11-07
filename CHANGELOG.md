@@ -47,7 +47,11 @@ persona room layout and all machine-readable output with the Windows side.
 - `tools/burn-iso.js`: `--test-only` now really opens the drive with the writer instead of reporting
   success without touching it. `cdrskin` is detected as a writer, and failures name the real writer
   error (for example "Lost connection to drive") with USB port/cable/power advice instead of the last
-  "aborting" line. B06 now also covers "writer cannot open the drive".
+  "aborting" line. B06 now also covers "writer cannot open the drive". Blank/finalized CD-R media is
+  detected through `xorriso -list_formats` when `-msinfo` cannot answer, and the burn log no longer
+  claims a "DISCPERSONA" label when the ISO carries its own (Unicode) label.
+- 中文：`burn-iso.js` 用 `xorriso -list_formats` 识别空白/已封盘 CD-R，刻录日志不再声称卷标是
+  `DISCPERSONA`（卷标来自 ISO 本身）。
 - Verified against a real USB DVD writer (Slimtype eBAU108): ISO generation and drive detection work;
   burning correctly fails with B06 while the kernel reports a USB disconnect/reset loop.
 
