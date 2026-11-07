@@ -4,6 +4,83 @@ All notable changes to this project. Format loosely follows [Keep a Changelog](h
 this project does not promise semantic versioning for the launcher — the **disc format** version is what
 matters for compatibility.
 
+## [0.3.0] - 2026-11-07
+
+Linux support: a parallel Node.js implementation of the whole pipeline, sharing the disc format, the
+persona room layout and all machine-readable output with the Windows side.
+
+### Added
+
+- **Linux launcher** — `start.sh` + `engine/launch.js` + `engine/lib/*.js` (Node.js >= 18, builtins
+  only). Same boot sequence, `state.json`, lock file, patch generation, lorebook merge, persona card
+  sync, workspace pinning, payload fallback and error codes E01–E10 as `launch.ps1`.
+- **Linux tools** — `tools/new-disc.js`, `tools/test-disc.js`, `tools/new-iso.js`,
+  `tools/burn-iso.js`, `tools/new-profile-payload.js`. The ISO builder ships a dependency-free
+  ISO9660 + Joliet writer (and prefers `xorriso`/`genisoimage` when installed), then verifies the
+  written image. Burning uses `wodim`/`cdrecord`/`growisofs`/`xorriso` and reports the same
+  B01–B08 codes.
+- **Linux Studio + watcher** — `start-studio.sh` + `studio/server.js` (same web UI, same HTTP API)
+  and `engine/tools/disc-watch.js` (mount polling + XDG autostart).
+- **Engine self-test on Linux** — `engine/_selftest/run-tests.js` with shell stubs, 17 assertions
+  matching the PowerShell suite (T1–T14).
+- **Docs and CI** — `docs/linux.md`, Linux sections in both READMEs, `engine.md`, `DISC-SPEC.md`,
+  `studio.md`, `tools/README.md`; a `linux` job in `.github/workflows/checks.yml`; integration tests
+  under `tests/`.
+- Discs built by `new-disc.js` still carry `start.cmd` and `autorun.inf`, so one disc boots on both
+  Windows and Linux; `new-disc.js` always includes `start.sh` and `engine/launch.js`.
+
+### Changed
+
+- `.gitattributes` now pins `*.sh`/`*.js` to LF; `.editorconfig` sets LF for `sh`/`md` too.
+- `Test-Disc` (Linux) checks `start.sh` (LF, no BOM, shebang, references `engine/launch.js`) and
+  treats `autorun.inf` / `start.cmd` as optional Windows extras instead of requirements.
+
+### Notes
+
+- Windows behaviour is unchanged; no `.ps1`/`.cmd` file was modified.
+- The Linux launcher rejects non-Linux platforms with E05, just as the Windows launcher rejects
+  non-Windows platforms.
+- Linux has no AutoPlay: run `bash start.sh` from the mounted disc, or use the optional watcher.
+
+---
+
+## [0.3.0] - 2026-11-07（中文）
+
+Linux 支持：整套流水线新增并行的 Node.js 实现，与 Windows 侧共用光盘格式、人格房间布局和
+所有机器可读输出。
+
+### 新增
+
+- **Linux 启动器** — `start.sh` + `engine/launch.js` + `engine/lib/*.js`（Node.js ≥ 18，零 npm 依赖）。
+  启动流程、`state.json`、锁文件、patch 生成、世界书拼接、人设卡同步、工作区钉定、插件载荷回退与
+  错误码 E01–E10 均与 `launch.ps1` 对齐。
+- **Linux 工具链** — `new-disc.js`、`test-disc.js`、`new-iso.js`、`burn-iso.js`、
+  `new-profile-payload.js`。ISO 使用零依赖的 ISO9660 + Joliet 内置写入器（有 xorriso 等工具时优先用），
+  写出后回读校验；刻录走 `wodim`/`cdrecord`/`growisofs`/`xorriso`，错误码 B01–B08 不变。
+- **Linux Studio 与守望者** — `start-studio.sh` + `studio/server.js`（同一网页、同一 API）、
+  `engine/tools/disc-watch.js`（轮询挂载点 + XDG autostart）。
+- **Linux 引擎自测** — `engine/_selftest/run-tests.js`，用 shell stub 覆盖与 PowerShell 套件相同的
+  17 项断言（T1–T14）。
+- **文档与 CI** — 新增 `docs/linux.md`，两份 README、`engine.md`、`DISC-SPEC.md`、`studio.md`、
+  `tools/README.md` 增补 Linux 说明；`.github/workflows/checks.yml` 新增 `linux` job；
+  `tests/` 下新增集成测试。
+- `new-disc.js` 仍会写入 `start.cmd` 与 `autorun.inf`，并总是带上 `start.sh` 与 `engine/launch.js`，
+  因此同一张盘可在 Windows / Linux 上启动。
+
+### 变更
+
+- `.gitattributes` 固定 `*.sh`/`*.js` 为 LF；`.editorconfig` 对 `sh`/`md` 也使用 LF。
+- Linux 的 `test-disc.js` 检查 `start.sh`（LF、无 BOM、shebang、引用 `engine/launch.js`），
+  `autorun.inf` / `start.cmd` 改为可选的 Windows 附加项。
+
+### 说明
+
+- Windows 行为不变，未修改任何 `.ps1`/`.cmd`。
+- Linux 启动器对非 Linux 平台报 E05，与 Windows 启动器对非 Windows 平台的处理对称。
+- Linux 没有 AutoPlay：挂载后运行 `bash start.sh`，或安装可选守望者。
+
+---
+
 ## [0.2.3] - 2026-11-05
 
 Everything a user sees while running the project is now English. The Studio's own bilingual UI is

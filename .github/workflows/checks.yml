@@ -66,3 +66,52 @@ jobs:
         run: |
           node --check studio\web\app.js
           node --check studio\web\card-import.js
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Syntax — .js and .sh
+        run: |
+          set -e
+          for f in $(git ls-files '*.sh'); do sh -n "$f"; done
+          for f in $(git ls-files '*.js' | grep -v '^payload/' | grep -v '^studio/web/'); do node --check "$f"; done
+          node --check studio/web/app.js
+          node --check studio/web/card-import.js
+          echo "all Linux scripts parse"
+
+      - name: Shell hygiene — LF only, no BOM, ASCII for start.sh
+        run: |
+          python3 - <<'PY'
+          import sys
+          bad = []
+          for path in ('start.sh', 'start-studio.sh'):
+              data = open(path, 'rb').read()
+              if b'\r' in data:
+                  bad.append(path + ': contains CR (must be LF only)')
+              if data.startswith(b'\xef\xbb\xbf'):
+                  bad.append(path + ': has a UTF-8 BOM')
+              if path == 'start.sh' and any(b > 0x7f for b in data):
+                  bad.append(path + ': must be ASCII only')
+          if bad:
+              print('\n'.join(bad))
+              sys.exit(1)
+          print('shell scripts OK')
+          PY
+
+      - name: Engine self-tests (stubbed dsh, no network)
+        run: node engine/_selftest/run-tests.js
+
+      - name: Build, validate and image the sample disc
+        run: |
+          node tools/new-disc.js --persona examples/sample-persona --out build/disc
+          node tools/test-disc.js --disc build/disc
+          node tools/new-iso.js --source build/disc --out build/disc.iso
+
+      - name: Integration tests
+        run: node --test tests/

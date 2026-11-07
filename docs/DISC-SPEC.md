@@ -9,14 +9,19 @@
 ```
 <disc>\
   autorun.inf                 光盘入口（UTF-16LE + BOM，CRLF）
-  start.cmd                   ASCII，CRLF，只做「找 PowerShell → 转交 engine\launch.ps1」
-  engine\                     launch.ps1 + lib（由打包器从工作区复制）
+  start.cmd                   Windows：ASCII，CRLF，只做「找 PowerShell → 转交 engine\launch.ps1」
+  start.sh                    Linux：POSIX sh，LF，无 BOM，只做「找 node → 转交 engine/launch.js」
+  engine\                     launch.ps1 + lib / launch.js + lib（由打包器从工作区整份复制）
   persona\                    Persona Pack
   pad.bin                     512 字节盘片身份文件
   .discpersona\manifest.json  完整性清单
   .discpersona\payload\       可选  预装插件载荷（profile-web\ + payload.json）
   README.txt                  给拾到这张盘的人看
 ```
+
+同一张盘可以同时带 Windows 与 Linux 两套启动器；两边共用 `persona\`、`pad.bin`、manifest 与
+房间布局。Linux 没有 AutoPlay，`autorun.inf` 在 Linux 上只是无害文件；入口是
+`bash start.sh`。ISO 9660/Joliet 不保存 Unix 可执行位，因此不要依赖 `./start.sh` 直接执行。
 
 `persona\` 内：
 

@@ -1,6 +1,13 @@
 # tools/ - disc build pipeline
 
-Five scripts; they rely only on commands that ship with Windows PowerShell 5.1 (no Node, no npm packages).
+Five scripts; on Windows they rely only on commands that ship with Windows PowerShell 5.1 (no Node, no npm
+packages). On Linux the same pipeline exists in `tools/*.js` (Node.js builtins only, no npm packages); it
+builds the same disc format, so a disc made by either side works on both.
+
+> Linux quick reference: `node tools/new-disc.js --persona <pack> --out <dir>`,
+> `node tools/test-disc.js --disc <dir>`, `node tools/new-iso.js --source <dir> --out <file>.iso`,
+> `node tools/burn-iso.js --iso-path <file>.iso --drive /dev/sr0`, and
+> `node tools/new-profile-payload.js --preset comfort`. Full Linux manual: [../docs/linux.md](../docs/linux.md).
 
 ```
 New-ProfilePayload.ps1  install plugins -> pre-pack a profile (optional, one-off)
@@ -156,3 +163,49 @@ The final line is always `BURN_OK <drive> <bytes> bytes <seconds>s` or `BURN_FAI
 
 Burning **closes** the disc (`ForceMediaToBeClosed`), so nothing can be appended afterwards - one disc,
 one persona.
+
+
+---
+
+# Linux pipeline (`tools/*.js`)
+
+Same seven-step artefact, Node.js implementation. All scripts are CommonJS with no dependencies, take
+GNU-style options (`--persona`, `--out`, ...), and print the same machine-readable last line as the
+PowerShell versions (`DISC_OK`, `PASS`/`FAIL`, `ISO_OK`/`ISO_FAIL`, `BURN_OK`/`BURN_FAIL`,
+`PAYLOAD_OK`/`PAYLOAD_FAIL`).
+
+```sh
+# 1) build a disc tree
+node tools/new-disc.js --persona examples/sample-persona --out build/linux-disc
+node tools/new-disc.js --persona examples/sample-persona --out build/linux-disc --reuse-pad
+node tools/new-disc.js --persona examples/sample-persona --out build/linux-disc --payload-preset token --force
+
+# 2) verify it (required files, manifest shape + hashes, pad.bin, start.sh, autorun when present)
+node tools/test-disc.js --disc build/linux-disc
+
+# 3) ISO 9660 + Joliet; works with no external tools (built-in writer), and verifies the image after writing
+node tools/new-iso.js --source build/linux-disc --out build/linux-disc.iso
+node tools/new-iso.js --source build/linux-disc --out build/disc.iso --volume-label ARIS --force
+
+# 4) burn (optional; needs wodim/cdrecord/growisofs/xorriso and a real drive)
+node tools/burn-iso.js --list-drives
+node tools/burn-iso.js --iso-path build/linux-disc.iso --drive /dev/sr0 --test-only
+node tools/burn-iso.js --iso-path build/linux-disc.iso --drive /dev/sr0 --eject
+
+# 5) optional: rebuild a plugin payload from npm
+node tools/new-profile-payload.js --preset comfort
+node tools/new-profile-payload.js --preset custom --plugins dsh-soul-md --out build/payload/profile-web --force
+```
+
+Differences from the PowerShell side:
+
+| | Windows | Linux |
+| --- | --- | --- |
+| ISO writer | IMAPI2 | built-in ISO9660 + Joliet writer; uses `xorriso`/`genisoimage`/`mkisofs` when present |
+| Burner | IMAPI2 | `wodim` / `cdrecord` / `growisofs` / `xorriso -as cdrecord` |
+| Drive selector | `-DriveLetter F` | `--drive /dev/sr0` (or bare `sr0`) |
+| Executable bits on the disc | n/a | Joliet does not store them; start with `bash start.sh` |
+| Launch entry | `start.cmd` | `start.sh` |
+
+Error codes are shared: `I01`–`I05` (ISO; `I05` is the post-write verification), `B01`–`B08` (burn),
+`PL00`–`PL05` (payload). `B06` also covers "no burning tool installed".

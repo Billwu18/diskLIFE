@@ -152,8 +152,9 @@ for ($pass = 1; $pass -le 2; $pass++)
 ```
 
 日志里会出现「带插件载荷启动失败，丢弃预打包 profile，回退纯人设重试一次」。人设本身走 patch，不依赖插件，
-所以回退后人还是那个人，只是少了 `memory_*` 工具。`state.json.payloadPlugins` 记录这次实际用上的插件，
-`state.json.payloadPreset` 记录用的是哪组预设（`none` / `comfort` / `token` / `full`），回退时插件列表为空但预设保留。
+所以回退后人还是那个人，只是少了 `memory_*` 工具。`state.json.payloadPlugins` 记录载荷里包含的插件
+（回退时它仍然记录这份列表，但本次实际没有加载——以日志里是否出现「Plugin payload:」为准），
+`state.json.payloadPreset` 记录用的是哪组预设（`none` / `comfort` / `token` / `full`），回退时预设保留。
 
 ### 3.3 同步人设卡（dsh-persona-dafeiyu）
 
@@ -307,7 +308,7 @@ manifest 本身读不出来 → E03（无法确认完整性）。没有 manifest
 | E02 | pad.bin 读不了 | 1 | 光盘磨损、光驱读盘失败 |
 | E03 | 文件被改动过 | 1 | manifest 失配 / 文件缺失 / manifest 本身坏了 |
 | E04 | 找不到 dsh | 1 | PATH 上没有 dsh.cmd，也没设 `DISCPERSONA_DSH` |
-| E05 | 环境不支持 | 1 | 非 Windows 或 PowerShell < 5.1 |
+| E05 | 环境不支持 | 1 | 非 Windows 或 PowerShell < 5.1（Linux 侧：非 Linux 或 Node 不可用） |
 | E06 | home 写不进去 | 1 | 目录不可写、磁盘满、路径被文件占住 |
 | E07 | 凭据缺失 | 1 | 主 home 不存在，或没有 `deepseek-account-platform/*` + `DEEPSEEK_API_KEY` |
 | E08 | 人设文件解析失败 | 1 | 找不到 `system_prompt`，或文件读不出来 |
@@ -458,3 +459,46 @@ un-tests.ps1` 从 15 项扩到 **17 项**，新增：
 - `Start-Process` 带 `-RedirectStandardOutput/-Error` 时 **`ExitCode` 读回空**（PowerShell 5.1）。所以每次任务生成一个一次性 `wrapper.ps1`，末尾 `Write-Output ('EXITCODE=' + $LASTEXITCODE)`，服务端用 `EXITCODE=(-?\d+)` 从输出里回填。
 - wrapper 里**参数名必须裸写**（`-IsoPath`），加了引号会被当成位置字符串 → 子进程报 `PositionalParameterNotFound`。
 - 子进程输出是系统代码页（中文 Windows 是 GBK），`Read-JobText` 先按 UTF-8 严格解码，失败再退回 `Encoding::Default`，否则中文日志会变乱码。
+
+---
+
+## 13. Linux 端口（`engine/launch.js`）
+
+Linux 侧是同一套启动流程的 Node.js 实现，与 `launch.ps1` **并存**、共享同一份光盘格式与房间布局：
+
+```
+start.sh  →  node engine/launch.js --disc-root <disc> [--dsh-path ...] [--home-root ...] ...
+```
+
+参数一一对应（kebab-case）：`--dsh-path` / `--home-root` / `--start-timeout-sec` / `--no-browser` /
+`--upgrade-persona` / `--no-wait`；环境变量仍是 `DISCPERSONA_DSH`、`DISCPERSONA_SOURCE_HOME`、
+`DISCPERSONA_HOME`，另有 `DISKLIFE_NODE` 供 `start.sh` 指定 node。
+
+### 13.1 平台差异
+
+| 项 | Windows (`launch.ps1`) | Linux (`launch.js`) |
+| --- | --- | --- |
+| 平台检查 | Windows + PowerShell ≥ 5.1 → 否则 E05 | Linux + Node ≥ 18 → 否则 E05 |
+| 房间兜底 | `%LOCALAPPDATA%\DiscPersona\personas` | `${XDG_DATA_HOME:-~/.local/share}/DiscPersona/personas` |
+| 进程存活/启动时间 | `Get-Process` + `StartTime.Ticks` | `/proc/<pid>/stat` 第 22 字段（starttime，时钟滴答） |
+| 进程树终止 | `taskkill /T /F` | `detached: true` 起进程组，`process.kill(-pid, 'SIGKILL')` |
+| 启动子进程 | `cmd /d /s /c "... > log 2> err"` | `spawn(dsh, args, {detached:true, stdio:[ignore,fd,fd]})` + `unref()` |
+| 打开浏览器 | `Start-Process <url>` | `xdg-open <url>`（detached，失败不阻塞） |
+| 读 dsh stdout | `FileShare.ReadWrite` | 普通读取日志文件（POSIX 无共享锁问题） |
+| 换行 | `.ps1` / `.cmd` 为 CRLF + BOM | `.js` / `.sh` 为 LF、无 BOM |
+| 写 JSON | 手写序列化器（PS 5.1 空数组坑） | `JSON.stringify`（数组保持 `[]`） |
+
+以下契约完全一致，Linux 侧逐条照搬：错误码 E01–E10 与退出码、必需文件、manifest 校验（含
+`..` 越界拒绝）、房间解析顺序、人设「首启固化 / 房间优先 / pending 升级 / `--upgrade-persona`
+备份」、凭据分块搬运、seed 与 `AGENTS.md` 幂等补齐、人设卡同步、工作区 pin（真实数组）、
+`persona.patch.yml` 形状、payload 首启复制与「丢弃后冷启重试一次」、单实例锁（早写锁、
+成功后改写为 dsh PID）、端口复用与 `--port 0` 重试、stdout 就绪 URL 轮询、`logs/launch-*.log`
+保留 10 个、TTY 才等待按键、E10 退出码 0。
+
+### 13.2 Linux 上不做的部分
+
+- 不检测光盘是否为「钥匙」（与 Windows 相同）。
+- 不调用任何外部命令（除 `dsh` 与 `xdg-open`），不依赖 `bash` 之外的 shell 功能；`start.sh` 是
+  POSIX sh，`engine/launch.js` 只用 Node 内置模块。
+- 自测：`node engine/_selftest/run-tests.js`，用 `stub-*.sh` 代替 dsh，覆盖与
+  `run-tests.ps1` 相同的 17 项断言（T1、T1-patch、T1-state、T1-seed、T2–T14）。

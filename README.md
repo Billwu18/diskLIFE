@@ -17,7 +17,8 @@ stays on disk. No accounts, no cloud, no DRM.
 
 > **Naming.** The project is **diskLIFE**; the launcher still creates its runtime folder as
 > `<dsh install root>\DiscPersona\personas\<discID>` (and `%LOCALAPPDATA%\DiscPersona\personas`
-> as the fallback). That folder name is part of the on-disk contract, so it keeps the old spelling.
+> as the fallback). On Linux it is `${XDG_DATA_HOME:-~/.local/share}/DiscPersona/personas/<discID>`.
+> That folder name is part of the on-disk contract, so it keeps the old spelling.
 
 ## What it actually does
 
@@ -39,7 +40,7 @@ design choice — and it also means the disc itself is read-only forever (CD-R c
 disc (read-only)                    room (your disk, writable)
 +----------------------+            +----------------------------------------+
 | autorun.inf          |            | personas/<discID>/                     |
-| start.cmd            |  launch    | +- home/         = DSH_HOME            |
+| start.cmd / start.sh |  launch    | +- home/         = DSH_HOME            |
 | pad.bin   -- discID -+----------->| |  +- profiles/web (payload or vanilla)|
 | persona/             |            | |  +- persona.patch.yml  (regenerated) |
 |  +- persona.yml      |            | |  +- AGENTS.md, .credentials.yaml     |
@@ -75,6 +76,9 @@ disc (read-only)                    room (your disk, writable)
 - **Honest failure modes** — every failure is a Chinese message plus an error code (E01–E10), never
   a silent exit. `E10` means "already running" and exits 0 with the existing URL.
 - **No admin rights; Chinese paths and spaces supported.**
+- **Windows and Linux** — the disc format is shared. Windows uses `start.cmd` + PowerShell/IMAPI2;
+  Linux uses `start.sh` + a dependency-free Node.js engine, a built-in ISO9660/Joliet writer, and
+  optional `wodim`/`growisofs`/`xorriso` for burning. See [docs/linux.md](docs/linux.md).
 
 ## Plugin packs
 
@@ -112,16 +116,20 @@ type is what the persona gets.
 
 | | |
 | --- | --- |
-| OS | Windows 10 / 11 (x64) |
-| Shell | Windows PowerShell 5.1 (included in Windows) |
+| OS | Windows 10 / 11 (x64) **or** Linux (x86_64 / arm64) |
+| Shell | Windows: Windows PowerShell 5.1 (included). Linux: POSIX `sh` + Node.js >= 18 |
 | Runtime | DeepSeek Harness **0.2.x** installed and logged in (`dsh` on `PATH`) |
 | Optional | A CD-R/CD-RW drive for actual burning; without one, mount the ISO instead |
+| Optional (Linux) | `wodim` / `cdrecord` / `growisofs` / `xorriso` for burning, `xdg-open` for the browser |
 | Disk | ~2 MB for the project + a few MB per persona room (more with plugins) |
 
-macOS/Linux are **not** supported: the launcher, the burner and the watcher are Windows-specific
-(IMAPI2 + WMI). Porting the launcher alone is feasible; PRs that keep Windows working are welcome.
+macOS is not supported. Linux is supported through a parallel Node.js implementation that keeps the
+same disc format and runtime layout; Node is already a hard dependency of `dsh`, so no extra runtime is
+needed. See [docs/linux.md](docs/linux.md) for the full Linux manual.
 
 ## Quick start (5 minutes, no disc needed)
+
+**Windows (PowerShell):**
 
 ```powershell
 git clone <this repo> diskLIFE
@@ -130,11 +138,27 @@ cd diskLIFE
 # 1) build a disc tree from the bundled sample persona
 powershell -ExecutionPolicy Bypass -File tools\New-Disc.ps1 -Persona examples\sample-persona -Out examples\sample-disc
 
-# 2) verify it (36 checks: manifest hashes, required files, autorun encoding...)
+# 2) verify it (manifest hashes, required files, autorun encoding...)
 powershell -ExecutionPolicy Bypass -File tools\Test-Disc.ps1 -Disc examples\sample-disc
 
 # 3) run the persona straight from that folder (no burning)
 powershell -ExecutionPolicy Bypass -File examples\sample-disc\engine\launch.ps1 -DiscRoot examples\sample-disc
+```
+
+**Linux (Node.js):**
+
+```sh
+git clone <this repo> diskLIFE
+cd diskLIFE
+
+# 1) build a disc tree from the bundled sample persona
+node tools/new-disc.js --persona examples/sample-persona --out build/linux-disc
+
+# 2) verify it
+node tools/test-disc.js --disc build/linux-disc
+
+# 3) run the persona straight from that folder (no burning)
+bash build/linux-disc/start.sh
 ```
 
 The launcher prints the URL, the room path and the log path. Stop it with Ctrl+C in the DSH console
@@ -143,7 +167,11 @@ or by killing the node process; the room (memory) stays.
 To design your own persona instead of using the sample:
 
 ```powershell
-.\start-studio.cmd          # http://127.0.0.1:4791/ opens automatically
+.\start-studio.cmd          # Windows: http://127.0.0.1:4791/ opens automatically
+```
+
+```sh
+./start-studio.sh           # Linux: same Studio, same API
 ```
 
 Fill in the 7 steps → **导出人设** (export) → **打包光盘** (build) → **生成 ISO** → (optional) **刻录**.
@@ -162,9 +190,20 @@ Everything lands in `persona\<slug>\`, `build\<slug>\` and `build\*.iso`.
 4. **Burn**: `tools\Burn-Iso.ps1 -IsoPath build\disc.iso -DriveLetter F` (`-ListDrives` shows drives
    and blank media; `-TestOnly` dry-runs; `-Eject` when done).
 5. **Insert**. Windows shows an AutoPlay prompt with the persona's name — accept it, and
-   `start.cmd` runs. Or double-click `start.cmd` yourself.
+   `start.cmd` runs. Or double-click `start.cmd` yourself. On Linux run `bash /media/$USER/<disc>/start.sh`
+   (Linux has no AutoPlay; the optional watcher can do it for you).
 
-The burned disc can be re-verified: `Test-Disc.ps1 -Disc F:\` re-hashes everything.
+The burned disc can be re-verified: `Test-Disc.ps1 -Disc F:\` (Windows) or
+`node tools/test-disc.js --disc /media/$USER/<disc>` (Linux) re-hashes everything.
+
+Linux builds the same ISO (ISO 9660 + Joliet), verifies it after writing, and can burn it with
+`wodim`/`cdrecord`/`growisofs`/`xorriso` when one is installed:
+
+```sh
+node tools/new-iso.js --source build/linux-disc --out build/linux-disc.iso
+node tools/burn-iso.js --list-drives
+node tools/burn-iso.js --iso-path build/linux-disc.iso --drive /dev/sr0
+```
 
 ## Persona Pack (v1)
 
@@ -204,19 +243,20 @@ Design rules that keep it pleasant:
 
 | Path | Role |
 | --- | --- |
-| `start.cmd` | Disc entry point; forwards arguments to the launcher |
-| `engine/launch.ps1` | The whole boot sequence (error codes E01–E10) |
-| `engine/lib/*.ps1` | Console/i18n, YAML subset, credentials, manifest, DSH process control |
-| `engine/tools/disc-watch.ps1` | Tray watcher: launches on disc insert (`-Install` / `-Uninstall`) |
-| `tools/New-Disc.ps1` | Persona pack → disc tree (+ `pad.bin`, manifest, autorun) |
-| `tools/Test-Disc.ps1` | 36 static checks, returns `PASS` / list of failures |
-| `tools/New-Iso.ps1` | Disc tree → ISO for Windows (IMAPI2, ISO 9660 + Joliet) |
-| `tools/Burn-Iso.ps1` | ISO → CD-R/CD-RW (IMAPI2, codes B01–B08) |
-| `tools/New-ProfilePayload.ps1` | Rebuilds one plugin pack (`-Preset comfort|token|full`) from npm |
+| `start.cmd` | Windows disc entry point; forwards arguments to the launcher |
+| `start.sh` | Linux disc entry point; finds Node and runs `engine/launch.js` |
+| `engine/launch.ps1` / `engine/launch.js` | The whole boot sequence (error codes E01–E10), PowerShell / Node |
+| `engine/lib/*.ps1`, `engine/lib/*.js` | Console/logging, YAML subset, credentials, manifest, DSH process control |
+| `engine/tools/disc-watch.ps1` / `disc-watch.js` | Watcher: launches on disc insert / mount (`-Install` / `--install`) |
+| `tools/New-Disc.ps1`, `tools/new-disc.js` | Persona pack → disc tree (+ `pad.bin`, manifest, autorun) |
+| `tools/Test-Disc.ps1`, `tools/test-disc.js` | Static checks, returns `PASS` / list of failures |
+| `tools/New-Iso.ps1`, `tools/new-iso.js` | Disc tree → ISO 9660 + Joliet (IMAPI2 / built-in JS writer) |
+| `tools/Burn-Iso.ps1`, `tools/burn-iso.js` | ISO → CD-R/CD-RW (IMAPI2 / wodim-class tools, codes B01–B08) |
+| `tools/New-ProfilePayload.ps1`, `tools/new-profile-payload.js` | Rebuilds one plugin pack (`comfort|token|full`) from npm |
 | `studio/` | Local web app + HTTP API (no build step, no npm install) |
 | `payload\<preset>\profile-web/` | Pre-installed plugin profile per preset, shipped on the disc (MIT, see notices) |
 | `examples/sample-persona/` | A complete, original example pack |
-| `docs/` | Engine internals, disc spec, Studio manual |
+| `docs/` | Engine internals, disc spec, Studio manual, Linux manual |
 
 ## FAQ
 
@@ -225,6 +265,8 @@ Windows still asks once (AutoPlay "choose what to do"), because that is the OS d
 media. `autorun.inf` supplies the prompt text and the command. For a zero-click experience, install
 the optional watcher: `engine\tools\disc-watch.ps1 -Install`. Bypassing AutoPlay with a scheduled task
 is out of scope (and would be indistinguishable from malware behaviour).
+Linux has no AutoPlay at all; run `bash start.sh` from the mounted disc, or install the optional
+watcher: `node engine/tools/disc-watch.js --install`.
 
 **Can I change the persona without burning a new disc?**
 Yes. The pack is copied into the room on first boot — edit `<room>\persona\persona.yml` and restart.
@@ -235,12 +277,14 @@ Yes. The pack is copied into the room on first boot — edit `<room>\persona\per
 **Where is the room?**
 By default next to your DSH installation: `<dsh install root>\DiscPersona\personas\<discID>`.
 It falls back to `%LOCALAPPDATA%\DiscPersona\personas` when that root is not writable or looks like a
-system directory. Override with `-HomeRoot <dir>` or the `DISCPERSONA_HOME` environment variable.
+system directory. On Linux the fallback is
+`${XDG_DATA_HOME:-~/.local/share}/DiscPersona/personas/<discID>`.
+Override with `-HomeRoot <dir>` / `--home-root <dir>` or the `DISCPERSONA_HOME` environment variable.
 
 **Does it work without a CD drive?**
-Yes — mount the ISO (double-click it) and run its `start.cmd`; or run
-`engine\launch.ps1 -DiscRoot <tree>` on the generated folder. `discID` comes from `pad.bin`, so the
-same tree always opens the same room.
+Yes — mount the ISO (double-click it) and run its `start.cmd` (Windows) or `bash start.sh` (Linux); or
+run `engine\launch.ps1 -DiscRoot <tree>` / `engine/launch.js --disc-root <tree>` on the generated
+folder. `discID` comes from `pad.bin`, so the same tree always opens the same room.
 
 **Are my main DSH sessions affected?**
 No. Different `DSH_HOME`, different workspace directory, different lock file. The only thing shared
@@ -256,6 +300,7 @@ the disc persona — otherwise the plugin's built-in demo card would fight with 
 - [docs/engine.md](docs/engine.md) — launch sequence, error codes, robustness notes
 - [docs/DISC-SPEC.md](docs/DISC-SPEC.md) — what is on the disc, byte for byte
 - [docs/studio.md](docs/studio.md) — Studio steps, validation, HTTP API
+- [docs/linux.md](docs/linux.md) — Linux support: commands, dependencies, room layout, watcher, ISO/burn
 - [LEGAL.md](LEGAL.md) — copyright, trademarks, media, warranty (read this)
 - [CONTRIBUTING.md](CONTRIBUTING.md) — dev setup, tests, style
 

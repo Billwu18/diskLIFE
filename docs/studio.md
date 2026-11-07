@@ -7,13 +7,22 @@
 
 ## 启动
 
-双击仓库根目录的 `start-studio.cmd`，或：
+Windows：双击仓库根目录的 `start-studio.cmd`，或：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File studio\server.ps1 -Port 4791
 ```
 
-浏览器会打开 `http://127.0.0.1:4791/`。服务只绑回环地址，局域网里的别人连不上。
+Linux：运行 `./start-studio.sh`，或：
+
+```sh
+node studio/server.js --port 4791
+node studio/server.js --port 0 --no-browser     # 让系统挑端口、不自动开浏览器
+```
+
+两侧是同一个网页、同一套 HTTP API、同一套端口顺延 / 已运行检测逻辑。Linux 上打包、ISO、刻录分别调用
+`tools/new-disc.js`、`tools/new-iso.js`、`tools/burn-iso.js`；「打开目录」用 `xdg-open`；光驱列表
+来自 `/dev/sr*`。浏览器会打开 `http://127.0.0.1:4791/`。服务只绑回环地址，局域网里的别人连不上。
 
 端口相关有两种情况会自动处理，不用手动改参数：
 
@@ -117,7 +126,7 @@ SillyTavern / Risu / 酒馆系工具导出的角色卡可以直接拖进来，�
 | GET | `/api/personas` | 扫描 `persona/*/` |
 | POST | `/api/load` | 读一个人设包回来（表单回填）；`{dir}` |
 | POST | `/api/export` | 写人设包；`{slug, files[{path,text\|base64}], overwrite}` |
-| POST | `/api/build` | 打包光盘目录；`{persona, out, reusePad, force, payload}`，`payload` 为 `none` / `comfort` / `token` / `full`。成功后会**顺手跑一遍 `Test-Disc.ps1`**，响应里 `testOk` / `testOutput` 就是那 36 项静态校验的结果（不通过不影响目录生成，但界面会标红） |
+| POST | `/api/build` | 打包光盘目录；`{persona, out, reusePad, force, payload}`，`payload` 为 `none` / `comfort` / `token` / `full`。成功后会**顺手跑一遍静态校验**（Windows 用 `Test-Disc.ps1`，Linux 用 `tools/test-disc.js`），响应里 `testOk` / `testOutput` 就是那套校验的结果（不通过不影响目录生成，但界面会标红） |
 | POST | `/api/iso` | 生成 ISO；`{disc, iso}` |
 | POST | `/api/burn` | 刻录；`{iso, drive, async}`。`async: true` 时立刻返回 `{jobId}`，不阻塞界面 |
 | GET | `/api/job` | 查后台任务；`?id=…` → `{done, exitCode, output}`，前端每 700 ms 轮询一次 |

@@ -16,6 +16,7 @@ DeepSeek Harness 实例——它有自己的 home、自己的记忆、自己的�
 
 > **关于名字。** 项目名是 **diskLIFE**；启动器创建的房间目录仍叫
 > `<dsh 安装根>\DiscPersona\personas\<discID>`（兜底 `%LOCALAPPDATA%\DiscPersona\personas`）。
+> Linux 上的兜底是 `${XDG_DATA_HOME:-~/.local/share}/DiscPersona/personas/<discID>`。
 > 那个目录名属于磁盘契约，所以保留旧拼写。
 
 ## 它到底做了什么
@@ -37,7 +38,7 @@ DeepSeek Harness 实例——它有自己的 home、自己的记忆、自己的�
 光盘（只读）                          房间（你的硬盘，可写）
 +----------------------+            +----------------------------------------+
 | autorun.inf          |            | personas/<discID>/                     |
-| start.cmd            |  启动      | +- home/         = DSH_HOME            |
+| start.cmd / start.sh |  启动      | +- home/         = DSH_HOME            |
 | pad.bin   -- discID -+----------->| |  +- profiles/web（载荷或原生）       |
 | persona/             |            | |  +- persona.patch.yml（每次启动重写）|
 |  +- persona.yml      |            | |  +- AGENTS.md、.credentials.yaml     |
@@ -58,11 +59,14 @@ DeepSeek Harness 实例——它有自己的 home、自己的记忆、自己的�
   Studio 支持导入 Character Card V2/V3（`.png` / `.json`）。
 - **Studio 上位机**：本地网页七步向导，实时预览、8 项校验，一键导出人设包 / 打包光盘 / 生成 ISO / 刻录。
   全程离线；AI 起草是可选项，默认关闭。
-- **打包器 + 校验器**：`New-Disc.ps1` 生成带 SHA-256 清单的光盘目录树；`Test-Disc.ps1` 先做 36 项检查，
+- **打包器 + 校验器**：`New-Disc.ps1` 生成带 SHA-256 清单的光盘目录树；`Test-Disc.ps1` / `test-disc.js` 先做整套静态检查（Windows 36 项 / Linux 44 项），
   别在坏盘上浪费 CD-R。
 - **不依赖第三方刻录软件**：纯 PowerShell + IMAPI2（`Burn-Iso.ps1`），失败给 B01–B08 明确错误码，
   而不是 COM 堆栈。
-- **可选守望者**：托盘常驻脚本，插盘即拉起（Windows 仍会问一次确认，见 FAQ）。
+- **可选守望者**：托盘常驻脚本，插盘即拉起（Windows 仍会问一次确认，见 FAQ；Linux 用 XDG autostart）。
+- **Windows 与 Linux 同一张盘**：Windows 走 `start.cmd` + PowerShell/IMAPI2；Linux 走 `start.sh` +
+  零依赖 Node.js 引擎、内置 ISO9660/Joliet 写入器，刻录可选 `wodim`/`growisofs`/`xorriso`。
+  详见 [docs/linux.md](docs/linux.md)。
 - **四组离线插件包**：打包时选一组（`-PayloadPreset`），首启不需要联网——`none`（最快）、
   `comfort`（人设卡 + 文件式记忆 + 人设库）、`token`（`dsh-context-compress` + `dsh-faster-compress` +
   `dsh-read-image-compress`，长对话更省 token）、`full`（五个都要，约 0.87 MB）；
@@ -85,16 +89,19 @@ Studio 跟随浏览器：中文环境（`zh-*`）显示中文，其它语言环�
 
 | | |
 | --- | --- |
-| 系统 | Windows 10 / 11（x64） |
-| Shell | Windows PowerShell 5.1（系统自带） |
+| 系统 | Windows 10 / 11（x64）**或** Linux（x86_64 / arm64） |
+| Shell | Windows：Windows PowerShell 5.1（系统自带）。Linux：POSIX `sh` + Node.js ≥ 18 |
 | 运行时 | DeepSeek Harness **0.2.x**，已安装并登录（`dsh` 在 `PATH` 上） |
 | 可选 | 一台 CD-R/CD-RW 光驱；没有也能用（挂载 ISO） |
+| 可选（Linux） | 刻录用 `wodim` / `cdrecord` / `growisofs` / `xorriso`，开浏览器用 `xdg-open` |
 | 空间 | 项目约 2 MB；每间房几 MB（装插件更多） |
 
-macOS/Linux **不支持**：启动器、刻录、守望者都是 Windows 专属（IMAPI2 + WMI）。
-只移植启动器是可行的，欢迎 PR，但不要弄坏 Windows 路径。
+macOS 不支持。Linux 由一份并行的 Node.js 实现支持：光盘格式与房间布局完全一致；Node 本来就是
+`dsh` 的硬依赖，不需要额外运行时。完整 Linux 手册见 [docs/linux.md](docs/linux.md)。
 
 ## 五分钟上手（不需要光盘）
+
+**Windows（PowerShell）：**
 
 ```powershell
 git clone <本仓库> diskLIFE
@@ -103,11 +110,27 @@ cd diskLIFE
 # 1) 用自带示例人设打一张盘（输出到 examples/sample-disc）
 powershell -ExecutionPolicy Bypass -File tools\New-Disc.ps1 -Persona examples\sample-persona -Out examples\sample-disc
 
-# 2) 先校验（36 项：清单哈希、必需文件、autorun 编码……）
+# 2) 先校验（清单哈希、必需文件、autorun 编码……）
 powershell -ExecutionPolicy Bypass -File tools\Test-Disc.ps1 -Disc examples\sample-disc
 
 # 3) 直接从目录启动，不用刻盘
 powershell -ExecutionPolicy Bypass -File examples\sample-disc\engine\launch.ps1 -DiscRoot examples\sample-disc
+```
+
+**Linux（Node.js）：**
+
+```sh
+git clone <本仓库> diskLIFE
+cd diskLIFE
+
+# 1) 用自带示例人设打一张盘（输出到 build/linux-disc）
+node tools/new-disc.js --persona examples/sample-persona --out build/linux-disc
+
+# 2) 校验
+node tools/test-disc.js --disc build/linux-disc
+
+# 3) 直接从目录启动，不用刻盘
+bash build/linux-disc/start.sh
 ```
 
 启动器会打印地址、房间路径、日志路径。要停就在 DSH 控制台按 Ctrl+C，或结束那个 node 进程；
@@ -116,7 +139,11 @@ powershell -ExecutionPolicy Bypass -File examples\sample-disc\engine\launch.ps1 
 想做自己的人设：
 
 ```powershell
-.\start-studio.cmd          # 自动打开 http://127.0.0.1:4791/
+.\start-studio.cmd          # Windows：自动打开 http://127.0.0.1:4791/
+```
+
+```sh
+./start-studio.sh           # Linux：同一个 Studio，同一套 API
 ```
 
 七个步骤填完 → **导出人设** → **打包光盘** → **生成 ISO** →（可选）**刻录**。
@@ -134,8 +161,19 @@ powershell -ExecutionPolicy Bypass -File examples\sample-disc\engine\launch.ps1 
 4. **刻录**：`tools\Burn-Iso.ps1 -IsoPath build\disc.iso -DriveLetter F`
    （`-ListDrives` 看光驱与空白介质；`-TestOnly` 只演练；`-Eject` 刻完弹出）。
 5. **插盘**：Windows 会带人设名弹一次 AutoPlay 提示，确认即运行 `start.cmd`；也可以自己双击。
+   Linux 上运行 `bash /media/$USER/<盘>/start.sh`（没有 AutoPlay；可选守望者见 FAQ）。
 
-刻完可以回读复核：`Test-Disc.ps1 -Disc F:\` 会重新算一遍哈希。
+刻完可以回读复核：`Test-Disc.ps1 -Disc F:\`（Windows）或
+`node tools/test-disc.js --disc /media/$USER/<盘>`（Linux）会重新算一遍哈希。
+
+Linux 生成同样的 ISO（ISO 9660 + Joliet），写出后自动回读校验；装了
+`wodim`/`cdrecord`/`growisofs`/`xorriso` 就能直接刻：
+
+```sh
+node tools/new-iso.js --source build/linux-disc --out build/linux-disc.iso
+node tools/burn-iso.js --list-drives
+node tools/burn-iso.js --iso-path build/linux-disc.iso --drive /dev/sr0
+```
 
 ## 人设包（v1）
 
@@ -172,19 +210,20 @@ card.json       # 可选：Character Card V2 副本，便于与其他工具互�
 
 | 路径 | 作用 |
 | --- | --- |
-| `start.cmd` | 光盘入口，参数透传给启动器 |
-| `engine/launch.ps1` | 整个启动流程（错误码 E01–E10） |
-| `engine/lib/*.ps1` | 控制台/文案、YAML 子集、凭据、清单校验、dsh 进程控制 |
-| `engine/tools/disc-watch.ps1` | 插盘守望者（`-Install` / `-Uninstall`） |
-| `tools/New-Disc.ps1` | 人设包 → 光盘目录（写 `pad.bin`、manifest、autorun） |
-| `tools/Test-Disc.ps1` | 36 项静态检查，输出 `PASS` / 失败列表 |
-| `tools/New-Iso.ps1` | 光盘目录 → ISO（IMAPI2，ISO 9660 + Joliet） |
-| `tools/Burn-Iso.ps1` | ISO → CD-R/CD-RW（IMAPI2，错误码 B01–B08） |
-| `tools/New-ProfilePayload.ps1` | 从 npm 重建某一组插件包（`-Preset comfort|token|full`） |
+| `start.cmd` | Windows 光盘入口，参数透传给启动器 |
+| `start.sh` | Linux 光盘入口，找 Node 并运行 `engine/launch.js` |
+| `engine/launch.ps1` / `engine/launch.js` | 整个启动流程（错误码 E01–E10），PowerShell / Node |
+| `engine/lib/*.ps1`、`engine/lib/*.js` | 日志/文案、YAML 子集、凭据、清单校验、dsh 进程控制 |
+| `engine/tools/disc-watch.ps1` / `disc-watch.js` | 插盘/挂载守望者（`-Install` / `--install`） |
+| `tools/New-Disc.ps1`、`tools/new-disc.js` | 人设包 → 光盘目录（写 `pad.bin`、manifest、autorun） |
+| `tools/Test-Disc.ps1`、`tools/test-disc.js` | 静态检查，输出 `PASS` / 失败列表 |
+| `tools/New-Iso.ps1`、`tools/new-iso.js` | 光盘目录 → ISO（IMAPI2 / 内置 JS 写入器，ISO 9660 + Joliet） |
+| `tools/Burn-Iso.ps1`、`tools/burn-iso.js` | ISO → CD-R/CD-RW（IMAPI2 / wodim 系工具，错误码 B01–B08） |
+| `tools/New-ProfilePayload.ps1`、`tools/new-profile-payload.js` | 从 npm 重建某一组插件包（`comfort|token|full`） |
 | `studio/` | 本地网页 + HTTP API（不需要 npm install、不需要构建） |
 | `payload\<preset>\profile-web/` | 按预设分库的随盘插件 profile（MIT，见第三方声明） |
 | `examples/sample-persona/` | 完整可用的原创示例人设 |
-| `docs/` | 引擎内幕、光盘规范、Studio 手册 |
+| `docs/` | 引擎内幕、光盘规范、Studio 手册、Linux 手册 |
 
 ## FAQ
 
@@ -192,6 +231,8 @@ card.json       # 可选：Character Card V2 副本，便于与其他工具互�
 Windows 仍会问一次（AutoPlay「选择要执行的操作」），这是光驱介质的系统默认行为。
 `autorun.inf` 负责提供提示文案和命令。想要零点击就装守望者：
 `engine\tools\disc-watch.ps1 -Install`。用计划任务绕过 AutoPlay 不在范围内（那和恶意软件的行为没区别）。
+Linux 没有 AutoPlay：直接 `bash start.sh`，或装守望者 `node engine/tools/disc-watch.js --install`
+（前提是桌面/udisks 已经把盘自动挂载）。
 
 **不重刻盘能换人设吗？**
 能。首启时人设包已固化进房间——改 `<房间>\persona\persona.yml` 后重启即可。
@@ -200,12 +241,14 @@ Windows 仍会问一次（AutoPlay「选择要执行的操作」），这是光�
 
 **房间在哪？**
 默认跟着 dsh 安装位置：`<dsh 安装根>\DiscPersona\personas\<discID>`。推断不到（或那目录像系统目录/
-不可写）时退回 `%LOCALAPPDATA%\DiscPersona\personas`。可用 `-HomeRoot <目录>` 或环境变量
-`DISCPERSONA_HOME` 指定。
+不可写）时退回 `%LOCALAPPDATA%\DiscPersona\personas`。Linux 上的兜底是
+`${XDG_DATA_HOME:-~/.local/share}/DiscPersona/personas/<discID>`。可用 `-HomeRoot <目录>` /
+`--home-root <目录>` 或环境变量 `DISCPERSONA_HOME` 指定。
 
 **没有光驱能用吗？**
-能。双击 ISO 挂载后运行里面的 `start.cmd`；或对生成的目录直接跑
-`engine\launch.ps1 -DiscRoot <目录>`。`discID` 由 `pad.bin` 决定，同一棵树永远打开同一间房。
+能。双击 ISO 挂载后运行里面的 `start.cmd`（Windows）或 `bash start.sh`（Linux）；或对生成的目录直接跑
+`engine\launch.ps1 -DiscRoot <目录>` / `engine/launch.js --disc-root <目录>`。`discID` 由 `pad.bin`
+决定，同一棵树永远打开同一间房。
 
 **会影响我主 DSH 的会话吗？**
 不会。`DSH_HOME`、工作区、锁文件都不同，唯一共用的是 `dsh` 可执行文件。
@@ -220,6 +263,7 @@ Windows 仍会问一次（AutoPlay「选择要执行的操作」），这是光�
 - [docs/engine.md](docs/engine.md) — 启动流程、错误码、健壮性修复记录
 - [docs/DISC-SPEC.md](docs/DISC-SPEC.md) — 盘上到底有什么（逐文件）
 - [docs/studio.md](docs/studio.md) — Studio 七步、校验规则、HTTP 接口
+- [docs/linux.md](docs/linux.md) — Linux 支持：命令、依赖、房间位置、守望者、ISO/刻录
 - [LEGAL.md](LEGAL.md) — 版权、商标、介质、免责（请读）
 - [CONTRIBUTING.md](CONTRIBUTING.md) — 开发、测试、代码风格
 
@@ -244,6 +288,10 @@ diskLIFE 是独立项目，与 DeepSeek、与任何游戏/动画发行方均无�
 powershell -ExecutionPolicy Bypass -File tools\New-Disc.ps1 -Persona examples\sample-persona -Out examples\sample-disc -PayloadPreset token
 ```
 
+```sh
+node tools/new-disc.js --persona examples/sample-persona --out build/linux-disc --payload-preset token
+```
+
 Studio 的「07 出厂」页也有对应的四张卡片。用的是哪一组，会写进 `persona\meta.json` 的
 `payload.preset` / `payload.plugins`，以及房间 `state.json` 的 `payloadPreset` / `payloadPlugins`。
 
@@ -251,11 +299,12 @@ Studio 的「07 出厂」页也有对应的四张卡片。用的是哪一组，�
 
 | | |
 | --- | --- |
-| 系统 | Windows 10 / 11（x64） |
-| Shell | Windows PowerShell 5.1（系统自带） |
+| 系统 | Windows 10 / 11（x64）**或** Linux（x86_64 / arm64） |
+| Shell | Windows：Windows PowerShell 5.1（系统自带）。Linux：POSIX `sh` + Node.js ≥ 18 |
 | 运行时 | 已安装并登录过的 DeepSeek Harness **0.2.x**（`dsh` 在 `PATH` 里） |
 | 可选 | 真刻盘需要一台 CD-R/CD-RW 光驱；没有光驱就挂载 ISO |
+| 可选（Linux） | 刻录用 `wodim` / `cdrecord` / `growisofs` / `xorriso`，开浏览器用 `xdg-open` |
 | 磁盘 | 项目本身约 2 MB，每个人格房间几 MB（装了插件会多几 MB） |
 
-macOS / Linux **不支持**：启动器、刻录、守望者都是 Windows 专属（IMAPI2 + WMI）。
-只移植启动器是可行的；欢迎不破坏 Windows 的 PR。
+macOS 不支持。Linux 由并行的 Node.js 实现支持，光盘格式与房间布局一致；详见
+[docs/linux.md](docs/linux.md)。
