@@ -24,6 +24,10 @@ node studio/server.js --port 0 --no-browser     # 让系统挑端口、不自动
 `tools/new-disc.js`、`tools/new-iso.js`、`tools/burn-iso.js`；「打开目录」用 `xdg-open`；光驱列表
 来自 `/dev/sr*`。浏览器会打开 `http://127.0.0.1:4791/`。服务只绑回环地址，局域网里的别人连不上。
 
+Linux 和 Windows 的「07 出厂」都可以勾选 **人设加密**（至少 8 位口令），把盘上的 `persona.yml` /
+`AGENTS.md` / `lorebook.json` / `seed/*` 变成 `persona.sealed` 密文；Windows 端需要 Node.js（dsh 自带）。
+首次启动时启动器会询问口令并解密到房间。
+
 Linux 的「07 出厂」页底部会多一块 **Linux：插盘自动启动** 面板：自动识别发行版与包管理器、检查
 udisks2 / glib2 / zenity / xdg-utils 依赖，缺依赖时给出对应发行版的安装命令，带「复制命令」/「打开下载页面」（发行版包页面），并可一键启用或关闭
 XDG 登录自启、立即启停插盘守望者。对应接口：`GET /api/linux/integration`、

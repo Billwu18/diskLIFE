@@ -75,7 +75,7 @@ disc (read-only)                    room (your disk, writable)
   the launcher falls back to a vanilla profile automatically.
 - **Honest failure modes** — every failure is a clear message plus an error code (E01–E12), never
   a silent exit. `E10` means "already running" and exits 0 with the existing URL.
-- **Optional persona encryption** — put `persona.yml`, `AGENTS.md`, `lorebook.json` and `seed/*` into
+- **Optional persona encryption** — Windows and Linux Studio can put `persona.yml`, `AGENTS.md`, `lorebook.json` and `seed/*` into
   a passphrase-encrypted `persona/persona.sealed`; Windows and Linux launchers ask for the passphrase
   on the first boot, and `tools/backup-room.js` can encrypt a whole room for backup/migration.
 - **No admin rights; Chinese paths and spaces supported.**

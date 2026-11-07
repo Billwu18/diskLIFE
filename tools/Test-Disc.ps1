@@ -5,14 +5,15 @@
 .DESCRIPTION
     Checks, one by one:
       - required files present (autorun.inf / start.cmd / README.txt / pad.bin /
-        .discpersona\manifest.json / persona\meta.json / persona\persona.yml)
+        .discpersona\manifest.json / persona\meta.json / (persona\persona.yml or persona\persona.sealed))
       - manifest.json is UTF-8 without BOM, parses, format=1, required fields present
       - every SHA-256 in the manifest matches the file on disc (missing files included)
       - the disc has no files beyond the manifest
       - pad.bin is exactly 512 bytes, magic correct, timestamp field is ISO8601(UTC)
       - manifest.discID is derived from pad.bin (first 16 lowercase hex chars)
       - persona\meta.json discID matches the manifest
-      - persona\persona.yml contains system_prompt:
+      - persona\persona.yml contains system_prompt: (plaintext discs)
+      - persona\persona.sealed is a diskLIFE sealed file and no plaintext persona files remain (encrypted discs)
       - start.cmd / autorun.inf use CRLF (start.cmd must not have a BOM)
       - autorun.inf contains open=start.cmd and the file its icon points at exists
 
@@ -118,13 +119,15 @@ $requiredFiles = @(
     'README.txt',
     'pad.bin',
     '.discpersona\manifest.json',
-    'persona\meta.json',
-    'persona\persona.yml'
+    'persona\meta.json'
 )
 foreach ($rel in $requiredFiles) {
     $full = Join-Path $discPath $rel
     Add-Check "exists: $rel" (Test-Path -LiteralPath $full -PathType Leaf) 'file missing'
 }
+$hasPlainPersona = Test-Path -LiteralPath (Join-Path $discPath 'persona\persona.yml') -PathType Leaf
+$hasSealedPersona = Test-Path -LiteralPath (Join-Path $discPath 'persona\persona.sealed') -PathType Leaf
+Add-Check 'persona is present (persona.yml or persona.sealed)' ($hasPlainPersona -or $hasSealedPersona) 'neither exists'
 
 # ---------------------------------------------------------------------------
 # 2. manifest.json
@@ -276,11 +279,27 @@ if (Test-Path -LiteralPath $metaPath -PathType Leaf) {
 }
 
 $ymlPath = Join-Path $discPath 'persona\persona.yml'
-if (Test-Path -LiteralPath $ymlPath -PathType Leaf) {
+$sealedPath = Join-Path $discPath 'persona\persona.sealed'
+if (Test-Path -LiteralPath $sealedPath -PathType Leaf) {
+    $sealedBytes = [System.IO.File]::ReadAllBytes($sealedPath)
+    $magic = ''
+    if ($sealedBytes.Length -ge 10) { $magic = [System.Text.Encoding]::ASCII.GetString($sealedBytes, 0, 10) }
+    Add-Check 'persona\persona.sealed is a diskLIFE sealed file' (($magic -ceq 'DLIFESEAL1') -and ($sealedBytes.Length -gt 60)) 'bad magic or truncated sealed payload'
+    $leftovers = New-Object System.Collections.Generic.List[string]
+    $personaDir = Join-Path $discPath 'persona'
+    foreach ($item in @(Get-ChildItem -LiteralPath $personaDir -Recurse -Force -File -ErrorAction SilentlyContinue)) {
+        $rel = $item.FullName.Substring($personaDir.Length).TrimStart('\').Replace('\', '/')
+        if ($rel -eq 'meta.json' -or $rel -eq 'persona.sealed') { continue }
+        if ($rel -match '^avatar\.(png|ico)$') { continue }
+        $leftovers.Add($rel)
+    }
+    Add-Check 'no plaintext persona files next to persona.sealed' ($leftovers.Count -eq 0) ('plaintext: ' + (($leftovers | Select-Object -First 8) -join ', '))
+    Add-NoteLine 'the persona is encrypted; the first boot asks for its passphrase'
+} elseif (Test-Path -LiteralPath $ymlPath -PathType Leaf) {
     $yml = Read-TextFile $ymlPath
     Add-Check 'persona\persona.yml contains system_prompt:' ($yml -match '(?m)system_prompt\s*:') 'system_prompt: key not found'
 } else {
-    Add-Check 'persona\persona.yml contains system_prompt:' $false 'file missing'
+    Add-Check 'persona\persona.yml or persona\persona.sealed exists' $false 'both are missing'
 }
 
 # ---------------------------------------------------------------------------

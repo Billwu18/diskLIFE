@@ -184,6 +184,10 @@ node tools/new-disc.js --persona examples/sample-persona --out build/linux-disc 
 node tools/new-disc.js --persona examples/sample-persona --out build/locked-disc \
   --seal-persona --passphrase-stdin < passphrase.txt
 
+# Windows PowerShell:
+# powershell -ExecutionPolicy Bypass -File tools\New-Disc.ps1 -Persona examples\sample-persona `
+#   -Out build\locked -SealPersona
+
 # optional: passphrase-encrypted room backup / restore
 node tools/backup-room.js --room ~/.local/DiscPersona/personas/<discID> \
   --out build/backups/room.dlseal --passphrase-stdin --verify < passphrase.txt

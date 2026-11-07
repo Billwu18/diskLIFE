@@ -50,7 +50,13 @@ param(
     [string]$PayloadPreset = 'comfort',
 
     [Parameter(HelpMessage = 'Allow overwriting a non-empty directory that is not a DiscPersona disc')]
-    [switch]$Force
+    [switch]$Force,
+
+    [Parameter(HelpMessage = 'Encrypt persona.yml/AGENTS.md/lorebook/seed into persona.sealed')]
+    [switch]$SealPersona,
+
+    [Parameter(HelpMessage = 'Read the seal passphrase from the first stdin line (automation)')]
+    [switch]$PassphraseStdin
 )
 
 $ErrorActionPreference = 'Stop'
@@ -112,6 +118,79 @@ function Fail-With([string[]]$Messages) {
     foreach ($m in $Messages) { Write-Host "  ✗ $m" -ForegroundColor Red }
     Write-Host ''
     exit 1
+}
+
+function Resolve-NodeExe {
+    foreach ($name in @('node.exe', 'node')) {
+        $cmd = Get-Command $name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($cmd -and $cmd.Source) { return $cmd.Source }
+    }
+    return $null
+}
+
+function ConvertFrom-SecurePassphrase {
+    param([Parameter(Mandatory = $true)][System.Security.SecureString]$Secure)
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secure)
+    try {
+        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+    } finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) | Out-Null
+    }
+}
+
+function Fail-Seal {
+    param([string]$Message)
+    Write-Host ''
+    Write-Host '[FAIL] Encrypted-persona step failed; no disc was written.' -ForegroundColor Red
+    Write-Host ('  ✗ ' + $Message) -ForegroundColor Red
+    Write-Host ''
+    exit 1
+}
+
+function Invoke-SealPersonaWithNode {
+    param(
+        [Parameter(Mandatory = $true)][string]$SealScript,
+        [Parameter(Mandatory = $true)][string]$PersonaDir,
+        [Parameter(Mandatory = $true)][string]$Passphrase
+    )
+    $node = Resolve-NodeExe
+    if (-not $node) {
+        Fail-Seal 'Node.js was not found. DeepSeek Harness ships with Node.js; install it or put node.exe on PATH, then retry.'
+    }
+    if (-not (Test-Path -LiteralPath $SealScript -PathType Leaf)) {
+        Fail-Seal ('The sealed-persona helper is missing: ' + $SealScript)
+    }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $node
+    $psi.Arguments = '"' + $SealScript + '" seal --dir "' + $PersonaDir + '" --passphrase-stdin'
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    try {
+        $proc = [System.Diagnostics.Process]::Start($psi)
+    } catch {
+        Fail-Seal ('Cannot start the sealed-persona helper: ' + $_.Exception.Message)
+    }
+    $exitCode = $null
+    try {
+        $proc.StandardInput.WriteLine($Passphrase)
+        $proc.StandardInput.Close()
+        $stdout = $proc.StandardOutput.ReadToEnd()
+        $stderr = $proc.StandardError.ReadToEnd()
+        $proc.WaitForExit()
+        $exitCode = $proc.ExitCode
+    } finally {
+        if ($proc -and -not $proc.HasExited) { try { $proc.Kill() } catch { } }
+        if ($proc) { $proc.Dispose() }
+    }
+    if ($exitCode -ne 0) {
+        $detail = ([string]$stderr).Trim()
+        if (-not $detail) { $detail = 'helper exited with code ' + $exitCode }
+        Fail-Seal ('Cannot encrypt the persona: ' + $detail)
+    }
+    return $stdout
 }
 
 # ---------------------------------------------------------------------------
@@ -664,6 +743,33 @@ $outMeta = (Read-TextFile $dstMetaPath) | ConvertFrom-Json
 $personaName    = ([string](Get-JsonProp $outMeta 'name')).Trim()
 $personaVersion = ([string](Get-JsonProp $outMeta 'version')).Trim()
 if (-not $personaVersion) { $personaVersion = ([string](Get-JsonProp $outMeta 'personaVersion')).Trim() }
+
+if ($SealPersona) {
+    Write-Step '[3/7] Encrypting the persona (sealed)'
+    $sealPass = $null
+    if ($PassphraseStdin) {
+        try { $sealPass = [Console]::In.ReadLine() } catch { $sealPass = $null }
+    } elseif ($env:DISKLIFE_PASSPHRASE) {
+        $sealPass = $env:DISKLIFE_PASSPHRASE
+    } else {
+        $secure1 = Read-Host -AsSecureString 'Passphrase for encrypted persona'
+        $secure2 = Read-Host -AsSecureString 'Repeat passphrase'
+        $sealPass = ConvertFrom-SecurePassphrase -Secure $secure1
+        $repeat = ConvertFrom-SecurePassphrase -Secure $secure2
+        if ($sealPass -ne $repeat) { Fail-Seal 'The two passphrases do not match.' }
+    }
+    if (-not $sealPass -or $sealPass.Length -lt 8) {
+        Fail-Seal 'The seal passphrase must be at least 8 characters.'
+    }
+    $sealScript = Join-Path $workspaceRoot 'engine\lib\seal.js'
+    [void](Invoke-SealPersonaWithNode -SealScript $sealScript -PersonaDir $personaDst -Passphrase $sealPass)
+    $sealPass = $null
+    if (-not (Test-Path -LiteralPath (Join-Path $personaDst 'persona.sealed') -PathType Leaf)) {
+        Fail-Seal 'The seal helper finished but persona.sealed was not created.'
+    }
+    Add-Note 'Persona encrypted on the disc (persona.yml/AGENTS.md/lorebook/seed -> persona.sealed); the passphrase is required on first boot.'
+    Write-Ok 'persona\ sealed: plaintext persona.yml/AGENTS.md/lorebook/seed removed'
+}
 
 # ---------------------------------------------------------------------------
 # 4. Copy the engine

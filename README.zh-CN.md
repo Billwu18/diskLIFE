@@ -71,7 +71,7 @@ DeepSeek Harness 实例——它有自己的 home、自己的记忆、自己的�
   `comfort`（人设卡 + 文件式记忆 + 人设库）、`token`（`dsh-context-compress` + `dsh-faster-compress` +
   `dsh-read-image-compress`，长对话更省 token）、`full`（五个都要，约 0.87 MB）；
   万一加载失败，启动器会自动回退到原生 profile。
-- **可选人设加密**：`persona.yml`、`AGENTS.md`、`lorebook.json`、`seed/*` 可以打包成口令加密的
+- **可选人设加密**：Windows / Linux Studio 都能把 `persona.yml`、`AGENTS.md`、`lorebook.json`、`seed/*` 打包成口令加密的
   `persona/persona.sealed`；Windows / Linux 启动器首次启动时询问口令，`tools/backup-room.js` 可加密
   整个房间用于备份/迁移。
 - **失败说得清**：每个错误都是中文说明 + 错误码（E01–E12），不静默退出；`E10` 表示「已经在跑」，

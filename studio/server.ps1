@@ -643,7 +643,23 @@ try {
                         $args = @('-Persona', $personaDir, '-Out', $outDir, '-PayloadPreset', $preset)
                         if ($body.reusePad) { $args += '-ReusePad' }
                         if ($body.force) { $args += '-Force' }
-                        $r = Invoke-ChildScript -Script $script -Arguments $args
+                        $wantSeal = ($body.seal -eq $true)
+                        $sealPassphrase = if ($null -ne $body.sealPassphrase) { [string]$body.sealPassphrase } else { '' }
+                        if ($wantSeal) {
+                            if ($sealPassphrase.Length -lt 8) {
+                                Send-Fail -Context $ctx -Message '加密人设的口令至少 8 位。' -Code 'S24'; continue
+                            }
+                            $args += '-SealPersona'
+                        }
+                        $oldSealEnv = $env:DISKLIFE_PASSPHRASE
+                        if ($wantSeal) { $env:DISKLIFE_PASSPHRASE = $sealPassphrase }
+                        try {
+                            $r = Invoke-ChildScript -Script $script -Arguments $args
+                        } finally {
+                            if ($null -eq $oldSealEnv) { Remove-Item Env:\DISKLIFE_PASSPHRASE -ErrorAction SilentlyContinue }
+                            else { $env:DISKLIFE_PASSPHRASE = $oldSealEnv }
+                            $sealPassphrase = $null
+                        }
                         $discID = ''
                         $m = [regex]::Match($r.Output, 'DISC_OK\s+discID=([0-9a-f]+)')
                         if ($m.Success) { $discID = $m.Groups[1].Value }
@@ -661,6 +677,7 @@ try {
                         Send-Json -Context $ctx -Object ([ordered]@{
                             ok = ($r.ExitCode -eq 0); code = 'BUILD'; exitCode = $r.ExitCode
                             discID = $discID; outDir = $outDir; output = $r.Output; payloadPreset = $preset
+                            sealed = $wantSeal
                             testOk = $testOk; testOutput = $testOut
                         })
                         continue

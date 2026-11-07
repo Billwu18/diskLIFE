@@ -157,7 +157,7 @@ bash start.sh --start-timeout-sec 90
 来源目录顺序：`DISCPERSONA_SOURCE_HOME` > `DSH_HOME` > `~/.dsh` > `$XDG_DATA_HOME/dsh`。
 两种形态都不满足 → E07，提示先在本机正常登录一次 dsh。
 
-### 6.1 人设加密（可选，Linux Studio / CLI）
+### 6.1 人设加密（可选，Studio / CLI）
 
 打包时加 `--seal-persona`，能把盘上的敏感人设文件变成**密文**，双击只能看到 `persona.sealed`：
 
@@ -173,8 +173,8 @@ node tools/new-disc.js --persona persona/studio-e2e --out build/locked \
 - 删掉房间后再次启动会重新询问口令；口令不写进光盘、不写进房间；
 - 错误码 `E11`（读不到口令/Node）与 `E12`（口令错误或密文损坏）；
 - 双击盘上的 `.md/.yml` 已经不存在；房间里的解密副本仍受系统权限保护。
-- 目前**加密打包由 Linux Studio/CLI 完成**；Windows Studio 的「人设加密」开关会隐藏，但 Windows 启动器
-  可以直接解锁 Linux 生成的加密盘。
+- Windows Studio / `tools\New-Disc.ps1 -SealPersona` 也支持加密打包（Windows 端需要 Node.js，dsh 自带）；
+  Windows 启动器可直接解锁任意端生成的加密盘。
 
 ### 6.2 房间加密备份（可选）
 
