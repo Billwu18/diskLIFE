@@ -144,14 +144,17 @@ bash start.sh --start-timeout-sec 90
 
 ## 6. 凭据从哪来
 
-启动器**只搬**这三个条目，原样复制、从不解析或打印值：
+启动器**只搬 DeepSeek 相关条目**，原样复制、从不解析或打印值。dsh 0.2.x 的两种登录形态都接受：
 
-- `records` 下的 `deepseek-account-platform/default`
-- `records` 下的 `deepseek-account-platform/device`
-- `refs` 下的 `DEEPSEEK_API_KEY`
+1. **账号登录**：`records` 下的 `deepseek-account-platform/default` + `/device`，加上
+   `refs.DEEPSEEK_API_KEY`；
+2. **浏览器会话登录**（本机 `~/.dsh` 常见形态）：`records` 下的
+   `client-connection/browser-session`，加上 `refs.DEEPSEEK_API_KEY` 和/或
+   `refs.DEEPSEEK_PLATFORM_TOKEN`。
 
+其他 refs（例如飞书/同步 token）不会复制，房间里的 `.credentials.yaml` 一律 0600。
 来源目录顺序：`DISCPERSONA_SOURCE_HOME` > `DSH_HOME` > `~/.dsh` > `$XDG_DATA_HOME/dsh`。
-都不行或缺少条目 → E07，提示先在本机正常登录一次 dsh。
+两种形态都不满足 → E07，提示先在本机正常登录一次 dsh。
 
 ---
 
@@ -230,6 +233,8 @@ node engine/tools/disc-watch.js --test-root build/linux-disc --dry-run
   「检测到 diskLIFE 光盘：蓝色大肥鱼 (v1.0.0) — 启动 / 稍后」。
 - 选「启动」→ 以 `--no-wait` 拉起 `engine/launch.js` 并打开浏览器；选「稍后」→ 本次不再询问，拔出重插会再问。
 - 同一张盘被挂载两次（例如 loop + 光驱）只会唤醒一次：按 `discID = sha256(pad.bin)[0:16]` 去重。
+- 默认优先使用**本仓库当前的** `engine/launch.js`，回退到盘上的 `engine/launch.js`。这样用早期版本
+  烧的盘也能享受到启动器修复（不必重刻）；想完全模拟裸机行为时加 `--disc-engine`。
 - 单实例锁 `${XDG_STATE_HOME:-~/.local/state}/disklife/disc-watch.pid`，登录自启和手动启动不会起两份。
 - 日志：`${XDG_STATE_HOME:-~/.local/state}/disklife/disc-watch.log`。
 

@@ -246,17 +246,21 @@ omit --from-default-profile to use it
 
 来源目录优先级：`DISCPERSONA_SOURCE_HOME` > `E:\dsh\dsh-data` > `%USERPROFILE%\.dsh`。
 
-从源 `.credentials.yaml` **原样搬三样东西**到 `home\.credentials.yaml`：
+从源 `.credentials.yaml` **原样搬 DeepSeek 相关条目**到 `home\.credentials.yaml`。dsh 0.2.x 有两种登录形态，
+两种都接受：
 
-1. `records` 下的 `deepseek-account-platform/default`
-2. `records` 下的 `deepseek-account-platform/device`
-3. `refs` 下的 `DEEPSEEK_API_KEY`
+1. **账号登录**：`records` 下的 `deepseek-account-platform/default` + `deepseek-account-platform/device`，
+   以及 `refs.DEEPSEEK_API_KEY`；
+2. **浏览器会话登录**（Linux 本机常见）：`records` 下的 `client-connection/browser-session`，以及
+   `refs.DEEPSEEK_API_KEY` / `refs.DEEPSEEK_PLATFORM_TOKEN`。
 
-目标文件里已有的条目（尤其是 dsh 自己生成的 `client-connection/browser-session`）**保持不动**。
+其他 refs（飞书、同步 token 等）不复制；目标文件里已有的无关条目保持不动。房间 `.credentials.yaml`
+在 Linux 上一律 0600（dsh 的 credentials 插件会拒绝 0644）。
 搬运按「2 空格缩进切块」进行，值一个字节都不改写，也从不输出到控制台或日志。
 
 失败语义：
 
+- 两种登录形态都不满足（没有账号记录、也没有 browser-session + key/token）→ E07
 - 源目录不存在 / 读不了 → E07
 - 源文件里缺上面任意一项 → E07（提示「请先在本机正常登录过一次 DSH」）
 - 写入失败 → E06

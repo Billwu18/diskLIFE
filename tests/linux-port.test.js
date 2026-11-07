@@ -229,6 +229,36 @@ test('Studio serves /api/env and /api/personas', async () => {
   }
 });
 
+test('credentials import accepts a browser-session login (no account records)', () => {
+  const cred = require(path.join(REPO, 'engine', 'lib', 'credentials.js'));
+  const dir = fs.mkdtempSync(path.join(tmpRoot, 'cred-'));
+  const source = path.join(dir, 'source.yaml');
+  const target = path.join(dir, 'target.yaml');
+  fs.writeFileSync(source, [
+    'version: 1',
+    'records:',
+    '  client-connection/browser-session:',
+    '    kind: grant',
+    '    payload:',
+    '      version: 1',
+    '      secret: test-only-not-a-real-secret',
+    'refs:',
+    '  DEEPSEEK_API_KEY: sk-test-only-not-real',
+    '  UNRELATED_SECRET: do-not-copy',
+    '',
+  ].join('\n'));
+  fs.chmodSync(source, 0o600);
+  assert.equal(cred.credentialHasLlm(source), true);
+  const result = cred.importLlmCredentials(source, target);
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(cred.credentialHasLlm(target), true);
+  assert.equal(fs.statSync(target).mode & 0o777, 0o600);
+  const text = fs.readFileSync(target, 'utf8');
+  assert.match(text, /client-connection\/browser-session/);
+  assert.match(text, /DEEPSEEK_API_KEY/);
+  assert.doesNotMatch(text, /UNRELATED_SECRET/);
+});
+
 test('Studio exposes Linux integration and toggles the autostart entry', async () => {
   const xdg = path.join(tmpRoot, 'studio-xdg');
   const studio = await startStudio({

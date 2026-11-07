@@ -50,6 +50,11 @@ persona room layout and all machine-readable output with the Windows side.
   burned disc mounts with a readable label instead of a mojibake directory name. The Joliet label
   accepts Unicode (up to 16 chars, default = the persona's name); the ISO 9660 primary descriptor
   gets an ASCII fallback (`DISCPERSONA`). Verified by loop-mounting the ISO (`/run/media/.../蓝色大肥鱼`).
+- Linux credentials: accept the browser-session login shape (`client-connection/browser-session` +
+  `DEEPSEEK_API_KEY`/`DEEPSEEK_PLATFORM_TOKEN`) in addition to `deepseek-account-platform/*`. A machine
+  signed in through the DSH web UI can now be a credential source (previously E07); only DeepSeek refs
+  are copied (0600). The watcher prefers the repo launcher over the copy frozen on an older disc
+  (`--disc-engine` forces the disc copy).
 - `tools/burn-iso.js`: `--test-only` now really opens the drive with the writer instead of reporting
   success without touching it. `cdrskin` is detected as a writer, and failures name the real writer
   error (for example "Lost connection to drive") with USB port/cable/power advice instead of the last
@@ -104,6 +109,10 @@ Linux 支持：整套流水线新增并行的 Node.js 实现，与 Windows 侧�
 
 ### 修复
 
+- Linux 凭据：除 `deepseek-account-platform/*` 外，也接受浏览器会话登录形态
+  （`client-connection/browser-session` + `DEEPSEEK_API_KEY`/`DEEPSEEK_PLATFORM_TOKEN`）；只复制
+  DeepSeek 相关 refs，文件 0600。用早期版本烧的盘可由守望者用仓库里的新启动器启动（`--disc-engine`
+  可强制用盘上的版本）。
 - `tools/new-iso.js`：ISO 只走内置的 ISO9660 + Joliet 写入器。外部 `xorriso`/`genisoimage` 快速路径已移除
   （它写入的 Rock Ridge 条目会改变盘上树形并让内置校验失败）；内置镜像已用挂载与真实刻录验证。
 - Joliet 卷描述字符串（卷标、应用 ID）改为 UCS-2BE，烧出的盘挂载后卷标可读、不再乱码；Joliet 卷标

@@ -1,8 +1,13 @@
 'use strict';
 // diskLIFE launch engine (Linux) - credential import
-// Block-level copy only: move the three LLM entries of the source home .credentials.yaml into
-// the persona home as-is, without parsing, decoding, or printing any key value.
-// Any browser-session grant already in the target file is kept as-is.
+// Block-level copy only: move the LLM entries of the source home .credentials.yaml into the
+// persona home as-is, without parsing, decoding, or printing any key value.
+// Two login shapes are accepted (dsh 0.2.x):
+//   * account login: deepseek-account-platform/default + /device + refs.DEEPSEEK_API_KEY
+//   * browser-session login: client-connection/browser-session + refs.DEEPSEEK_API_KEY
+//     (and/or refs.DEEPSEEK_PLATFORM_TOKEN)
+// This is why a machine that signed in through the web UI also works as a credential source.
+// Any target-only entries are kept as-is.
 // Ported from engine/lib/Credentials.ps1.
 
 const fs = require('fs');
@@ -22,7 +27,8 @@ const CREDENTIAL_RECORD_IDS = [
   'deepseek-account-platform/default',
   'deepseek-account-platform/device',
 ];
-const CREDENTIAL_REF_KEYS = ['DEEPSEEK_API_KEY'];
+const CREDENTIAL_SESSION_RECORD_ID = 'client-connection/browser-session';
+const CREDENTIAL_REF_KEYS = ['DEEPSEEK_API_KEY', 'DEEPSEEK_PLATFORM_TOKEN'];
 
 // Split .credentials.yaml into:
 //   versionLine : the original "version: ..." line
@@ -129,23 +135,34 @@ function escapeRegExp(text) {
   return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function hasRef(doc, key) {
+  const re = new RegExp('^\\s*' + escapeRegExp(key) + '\\s*:');
+  return doc.refLines.some((line) => re.test(line));
+}
+
+function hasAccountLogin(doc) {
+  for (const id of CREDENTIAL_RECORD_IDS) {
+    if (!doc.records.has(id)) {
+      return false;
+    }
+  }
+  return hasRef(doc, 'DEEPSEEK_API_KEY');
+}
+
+function hasSessionLogin(doc) {
+  if (!doc.records.has(CREDENTIAL_SESSION_RECORD_ID)) {
+    return false;
+  }
+  return hasRef(doc, 'DEEPSEEK_API_KEY') || hasRef(doc, 'DEEPSEEK_PLATFORM_TOKEN');
+}
+
 // Tell whether a .credentials.yaml holds usable LLM credentials (checks that the keys exist, never reads values).
 function credentialHasLlm(filePath) {
   if (!filePath || !isFile(filePath)) {
     return false;
   }
   const doc = getCredentialDocument(filePath);
-  for (const id of CREDENTIAL_RECORD_IDS) {
-    if (!doc.records.has(id)) {
-      return false;
-    }
-  }
-  for (const line of doc.refLines) {
-    if (/^\s*DEEPSEEK_API_KEY\s*:/.test(line)) {
-      return true;
-    }
-  }
-  return false;
+  return hasAccountLogin(doc) || hasSessionLogin(doc);
 }
 
 // Copy the LLM credentials of the source home into the persona home.
@@ -161,14 +178,29 @@ function importLlmCredentials(sourcePath, targetPath) {
     return { ok: false, reason: 'missing-source', count: 0 };
   }
 
+  if (!(hasAccountLogin(src) || hasSessionLogin(src))) {
+    return { ok: false, reason: 'no-llm', count: 0 };
+  }
+
   const imported = [];
   for (const id of CREDENTIAL_RECORD_IDS) {
     if (src.records.has(id)) {
       imported.push(id);
     }
   }
-  const srcRefLines = src.refLines.filter((line) => /^\s*DEEPSEEK_API_KEY\s*:/.test(line));
-  if (imported.length < CREDENTIAL_RECORD_IDS.length || srcRefLines.length === 0) {
+  if (src.records.has(CREDENTIAL_SESSION_RECORD_ID)) {
+    imported.push(CREDENTIAL_SESSION_RECORD_ID);
+  }
+
+  // Copy only the DeepSeek refs; leave unrelated secrets (Feishu etc.) in the source home.
+  const srcRefs = new Map();
+  for (const line of src.refLines) {
+    const m = /^\s*([A-Za-z0-9_]+)\s*:/.exec(line);
+    if (m && CREDENTIAL_REF_KEYS.indexOf(m[1]) >= 0) {
+      srcRefs.set(m[1], line);
+    }
+  }
+  if (srcRefs.size === 0) {
     return { ok: false, reason: 'no-llm', count: 0 };
   }
 
@@ -177,30 +209,24 @@ function importLlmCredentials(sourcePath, targetPath) {
     for (const id of imported) {
       dst.records.set(id, src.records.get(id).slice());
     }
-    // refs: replace a key with the same name, otherwise append
+    // refs: replace a key with the same name, otherwise append; unrelated target refs stay.
     const refs = [];
     const replaced = new Set();
     for (const line of dst.refLines) {
-      let isTarget = false;
-      for (const key of CREDENTIAL_REF_KEYS) {
-        const re = new RegExp('^\\s*' + escapeRegExp(key) + '\\s*:');
-        if (re.test(line)) {
-          isTarget = true;
-          if (!replaced.has(key)) {
-            refs.push(srcRefLines[0]);
-            replaced.add(key);
-          }
+      const m = /^\s*([A-Za-z0-9_]+)\s*:/.exec(line);
+      const key = m ? m[1] : '';
+      if (key && srcRefs.has(key)) {
+        if (!replaced.has(key)) {
+          refs.push(srcRefs.get(key));
+          replaced.add(key);
         }
+        continue;
       }
-      if (!isTarget) {
-        refs.push(line);
-      }
+      refs.push(line);
     }
     for (const key of CREDENTIAL_REF_KEYS) {
-      if (!replaced.has(key)) {
-        for (const line of srcRefLines) {
-          refs.push(line);
-        }
+      if (srcRefs.has(key) && !replaced.has(key)) {
+        refs.push(srcRefs.get(key));
         replaced.add(key);
       }
     }
@@ -218,7 +244,7 @@ function importLlmCredentials(sourcePath, targetPath) {
     return { ok: false, reason: 'write-failed', count: 0 };
   }
 
-  return { ok: true, reason: 'ok', count: imported.length + srcRefLines.length };
+  return { ok: true, reason: 'ok', count: imported.length + srcRefs.size };
 }
 
 // Make .credentials.yaml owner-only (0600). dsh refuses to start when the file is
@@ -277,6 +303,7 @@ function getSourceHome() {
 
 module.exports = {
   CREDENTIAL_RECORD_IDS,
+  CREDENTIAL_SESSION_RECORD_ID,
   CREDENTIAL_REF_KEYS,
   credentialHasLlm,
   ensureCredentialPermissions,

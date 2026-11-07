@@ -49,6 +49,7 @@ const opts = {
   mode: 'prompt', // prompt | auto | notify
   homeRoot: '',
   poll: false,
+  discEngine: false,
 };
 
 let logFile = '';
@@ -97,6 +98,7 @@ function usage() {
     '  --no-mount            Do not auto-mount media; only react to what the desktop mounts.',
     '  --poll                Use mount polling only (default: udisks2 D-Bus events + slow fallback).',
     '  --home-root <dir>     Pass a room root to the launcher (same as engine/launch.js --home-root).',
+    '  --disc-engine         Use the engine copy frozen on the disc (default: this repo\'s engine if present).',
     '  --no-browser          Tell the launcher not to open a browser.',
     '  --dry-run             Detect and log, but start nothing (never prompts).',
     '  --test-root <dir>     One-shot check of one directory; exit 0 if it is a disc, 1 otherwise.',
@@ -136,6 +138,7 @@ function parseArgs(argv) {
     else if (lower === '--no-browser' || lower === '-nobrowser') opts.noBrowser = true;
     else if (lower === '--no-mount' || lower === '-nomount') opts.noMount = true;
     else if (lower === '--poll' || lower === '-poll') opts.poll = true;
+    else if (lower === '--disc-engine' || lower === '-discengine') opts.discEngine = true;
     else if (lower === '--once' || lower === '-once') opts.once = true;
     else if (lower === '--help' || lower === '-h' || lower === '-help') opts.help = true;
     else if (lower === '--prompt' || lower === '-prompt') opts.mode = 'prompt';
@@ -339,6 +342,18 @@ function askBeforeLaunch(root) {
 }
 
 // ---------------------------------------------------------------- launching
+const REPO_LAUNCH_SCRIPT = path.resolve(__dirname, '..', 'launch.js');
+
+// Prefer this repo's launcher (it carries the latest fixes) and fall back to the copy frozen on
+// the disc. --disc-engine forces the disc copy, e.g. to reproduce exactly what a bare machine sees.
+function chooseLauncher(root) {
+  const discScript = path.join(root, 'engine', 'launch.js');
+  if (!opts.discEngine && isFile(REPO_LAUNCH_SCRIPT)) {
+    return { script: REPO_LAUNCH_SCRIPT, source: 'repo' };
+  }
+  return { script: discScript, source: 'disc' };
+}
+
 function startLauncher(root, launchScript) {
   const args = [launchScript, '--disc-root', root, '--no-wait'];
   if (opts.noBrowser) args.push('--no-browser');
@@ -385,16 +400,16 @@ function inspectRoot(root, dryRun) {
     }
   }
 
-  const launchScript = path.join(root, 'engine', 'launch.js');
-  if (!dryRun && !isFile(launchScript)) {
+  const launcher = chooseLauncher(root);
+  if (!dryRun && !isFile(launcher.script)) {
     if (!missingLauncherReported.has(root)) {
-      writeLog('No engine/launch.js on the disc: ' + root, 'error');
+      writeLog('No launcher available for this disc (' + launcher.script + '): ' + root, 'error');
       missingLauncherReported.add(root);
     }
     return false;
   }
 
-  writeLog('Disc mounted: ' + root + ' (entry: engine/launch.js)', 'wake');
+  writeLog('Disc mounted: ' + root + ' (engine: ' + launcher.source + ', ' + launcher.script + ')', 'wake');
 
   if (dryRun) {
     handled.set(root, { action: 'dry', id: discID });
@@ -408,7 +423,7 @@ function inspectRoot(root, dryRun) {
     return true;
   }
 
-  if (!startLauncher(root, launchScript)) return false;
+  if (!startLauncher(root, launcher.script)) return false;
   handled.set(root, { action: 'launched', id: discID });
   writeLog('Launcher started (it reports the result in its own log).', 'ok');
   return true;
