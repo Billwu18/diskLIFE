@@ -172,10 +172,11 @@ test('disc-watch detects a disc tree and rejects a plain directory', () => {
   assert.equal(miss.status, 1, 'watcher must ignore a non-disc directory');
 });
 
-async function startStudio() {
+async function startStudio(extraEnv) {
   const child = spawn(NODE, [path.join(REPO, 'studio', 'server.js'), '--port', '0', '--no-browser'], {
     cwd: REPO,
     stdio: ['ignore', 'pipe', 'pipe'],
+    env: Object.assign({}, process.env, extraEnv || {}),
   });
   let stdout = '';
   let stderr = '';
@@ -223,6 +224,42 @@ test('Studio serves /api/env and /api/personas', async () => {
     const personas = await (await fetch(studio.url + 'api/personas')).json();
     assert.equal(personas.ok, true);
     assert.ok(Array.isArray(personas.items));
+  } finally {
+    await stopStudio(studio.child);
+  }
+});
+
+test('Studio exposes Linux integration and toggles the autostart entry', async () => {
+  const xdg = path.join(tmpRoot, 'studio-xdg');
+  const studio = await startStudio({
+    XDG_CONFIG_HOME: path.join(xdg, 'config'),
+    XDG_STATE_HOME: path.join(xdg, 'state'),
+  });
+  const desktop = path.join(xdg, 'config', 'autostart', 'disklife-disc-watch.desktop');
+  try {
+    const info = await (await fetch(studio.url + 'api/linux/integration')).json();
+    assert.equal(info.ok, true);
+    assert.equal(info.platform, 'linux');
+    assert.ok(info.distro && info.distro.id, 'distro must be detected');
+    assert.equal(info.autostart.installed, false);
+
+    const install = await (await fetch(studio.url + 'api/linux/autostart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'install' }),
+    })).json();
+    assert.equal(install.ok, true, JSON.stringify(install).slice(0, 1000));
+    assert.equal(install.info.autostart.installed, true);
+    assert.match(fs.readFileSync(desktop, 'utf8'), /--prompt/);
+
+    const uninstall = await (await fetch(studio.url + 'api/linux/autostart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'uninstall' }),
+    })).json();
+    assert.equal(uninstall.ok, true);
+    assert.equal(uninstall.info.autostart.installed, false);
+    assert.ok(!fs.existsSync(desktop));
   } finally {
     await stopStudio(studio.child);
   }

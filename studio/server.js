@@ -35,6 +35,13 @@ const XDG_DATA_HOME = process.env.XDG_DATA_HOME || path.join(HOME_DIR, '.local',
 const DISC_PERSONA_ROOT = path.join(XDG_DATA_HOME, 'DiscPersona');
 const DISC_PERSONA_PERSONAS = path.join(DISC_PERSONA_ROOT, 'personas');
 
+const XDG_CONFIG_HOME = process.env.XDG_CONFIG_HOME || path.join(HOME_DIR, '.config');
+const XDG_STATE_HOME = process.env.XDG_STATE_HOME || path.join(HOME_DIR, '.local', 'state');
+const AUTOSTART_FILE = path.join(XDG_CONFIG_HOME, 'autostart', 'disklife-disc-watch.desktop');
+const WATCHER_LOCK = path.join(XDG_STATE_HOME, 'disklife', 'disc-watch.pid');
+const WATCHER_LOG = path.join(XDG_STATE_HOME, 'disklife', 'disc-watch.log');
+const WATCHER_SCRIPT = path.join(WORKSPACE_ROOT, 'engine', 'tools', 'disc-watch.js');
+
 const BODY_LIMIT = 12582912; // 12 MB
 
 let actualPort = 0;
@@ -390,6 +397,196 @@ function getPersonaList() {
   return list;
 }
 
+// ---------------------------------------------------------------- Linux desktop integration
+function whichBin(name) {
+  const paths = (process.env.PATH || '').split(path.delimiter);
+  for (const dir of paths) {
+    if (!dir) continue;
+    try {
+      fs.accessSync(path.join(dir, name), fs.constants.X_OK);
+      return path.join(dir, name);
+    } catch (e) { /* keep looking */ }
+  }
+  return '';
+}
+
+function readOsRelease() {
+  const result = {};
+  let text = '';
+  try { text = fs.readFileSync('/etc/os-release', 'utf8'); } catch (e) { return result; }
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^([A-Z0-9_]+)=(.*)$/.exec(line);
+    if (!m) continue;
+    let value = m[2].trim();
+    if (/^".*"$/.test(value)) value = value.slice(1, -1).replace(/\\"/g, '"');
+    result[m[1]] = value;
+  }
+  return result;
+}
+
+function detectDistro() {
+  const osr = readOsRelease();
+  const id = String(osr.ID || '').toLowerCase();
+  const like = String(osr.ID_LIKE || '').toLowerCase().split(/\s+/).filter(Boolean);
+  const families = [id].concat(like);
+  let family = 'generic';
+  if (families.some((v) => v === 'arch' || v === 'archlinux' || v === 'manjaro' || v === 'endeavouros')) family = 'arch';
+  else if (families.some((v) => v === 'debian' || v === 'ubuntu' || v === 'linuxmint' || v === 'pop' || v === 'kali')) family = 'debian';
+  else if (families.some((v) => v === 'fedora' || v === 'rhel' || v === 'centos' || v === 'rocky' || v === 'almalinux')) family = 'fedora';
+  else if (families.some((v) => v === 'opensuse' || v === 'suse' || v === 'sles')) family = 'suse';
+  else if (families.some((v) => v === 'alpine')) family = 'alpine';
+  else if (families.some((v) => v === 'nixos')) family = 'nixos';
+
+  const packageManagers = [
+    ['pacman', 'pacman', 'sudo pacman -S --needed udisks2 glib2 zenity xdg-utils'],
+    ['apt-get', 'apt', 'sudo apt install udisks2 libglib2.0-bin zenity xdg-utils'],
+    ['dnf', 'dnf', 'sudo dnf install udisks2 glib2 zenity xdg-utils'],
+    ['zypper', 'zypper', 'sudo zypper install udisks2 glib2-tools zenity xdg-utils'],
+    ['apk', 'apk', 'sudo apk add udisks2 glib zenity xdg-utils'],
+    ['xbps-install', 'xbps', 'sudo xbps-install udisks2 glib zenity xdg-utils'],
+    ['nix-env', 'nix', 'nix-shell -p udisks2 glib zenity xdg-utils'],
+  ];
+  for (const item of packageManagers) {
+    if (whichBin(item[0])) {
+      return {
+        id: id || 'linux',
+        name: osr.NAME || id || 'Linux',
+        pretty: osr.PRETTY_NAME || osr.NAME || 'Linux',
+        version: osr.VERSION_ID || '',
+        family,
+        packageManager: item[1],
+        installCommand: item[2],
+      };
+    }
+  }
+  const familyHint = {
+    arch: 'sudo pacman -S --needed udisks2 glib2 zenity xdg-utils',
+    debian: 'sudo apt install udisks2 libglib2.0-bin zenity xdg-utils',
+    fedora: 'sudo dnf install udisks2 glib2 zenity xdg-utils',
+    suse: 'sudo zypper install udisks2 glib2-tools zenity xdg-utils',
+    alpine: 'sudo apk add udisks2 glib zenity xdg-utils',
+    nixos: 'nix-shell -p udisks2 glib zenity xdg-utils',
+  };
+  return {
+    id: id || 'linux',
+    name: osr.NAME || id || 'Linux',
+    pretty: osr.PRETTY_NAME || osr.NAME || 'Linux',
+    version: osr.VERSION_ID || '',
+    family,
+    packageManager: '',
+    installCommand: familyHint[family] || '',
+  };
+}
+
+function readWatcherPid() {
+  try {
+    const pid = parseInt(fs.readFileSync(WATCHER_LOCK, 'utf8').trim(), 10);
+    if (!pid) return 0;
+    try { process.kill(pid, 0); return pid; } catch (e) { return e.code === 'EPERM' ? pid : 0; }
+  } catch (e) {
+    return 0;
+  }
+}
+
+function linuxIntegrationInfo() {
+  const distro = detectDistro();
+  const tools = {
+    udisks2: Boolean(whichBin('udisksctl')),
+    glib: Boolean(whichBin('gdbus')),
+    busctl: Boolean(whichBin('busctl')),
+    zenity: Boolean(whichBin('zenity')),
+    kdialog: Boolean(whichBin('kdialog')),
+    notifySend: Boolean(whichBin('notify-send')),
+    xdgOpen: Boolean(whichBin('xdg-open')),
+  };
+  const missing = [];
+  if (!tools.udisks2) missing.push('udisks2');
+  if (!tools.glib && !tools.busctl) missing.push('glib2 (gdbus)');
+  if (!tools.zenity && !tools.kdialog && !tools.notifySend) missing.push('zenity');
+  if (!tools.xdgOpen) missing.push('xdg-utils');
+  return {
+    ok: true,
+    platform: process.platform,
+    distro,
+    desktop: {
+      current: process.env.XDG_CURRENT_DESKTOP || '',
+      sessionType: process.env.XDG_SESSION_TYPE || '',
+      display: Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY),
+    },
+    tools,
+    missing,
+    installCommand: missing.length > 0 ? distro.installCommand : '',
+    eventSource: tools.glib ? 'udisks2-dbus (gdbus)' : (tools.busctl ? 'udisks2-busctl' : 'polling fallback'),
+    autostart: {
+      path: AUTOSTART_FILE,
+      installed: fs.existsSync(AUTOSTART_FILE),
+      running: readWatcherPid(),
+      log: WATCHER_LOG,
+    },
+    watcherScript: WATCHER_SCRIPT,
+  };
+}
+
+function runWatcherCommand(args) {
+  if (!fs.existsSync(WATCHER_SCRIPT)) {
+    return { exitCode: -1, output: '找不到 engine/tools/disc-watch.js' };
+  }
+  const r = spawnSync(process.execPath, [WATCHER_SCRIPT].concat(args), {
+    cwd: WORKSPACE_ROOT,
+    encoding: 'utf8',
+    timeout: 30000,
+    env: process.env,
+  });
+  const text = ((r.stdout || '') + '\n' + (r.stderr || '')).trim();
+  const exitCode = r.status === null || r.status === undefined ? -1 : r.status;
+  return { exitCode, output: text };
+}
+
+function sleepMs(ms) {
+  const buf = new Int32Array(new SharedArrayBuffer(4));
+  Atomics.wait(buf, 0, 0, ms);
+}
+
+function startWatcherNow() {
+  if (readWatcherPid()) return { exitCode: 0, output: 'Watcher is already running.' };
+  if (!fs.existsSync(WATCHER_SCRIPT)) return { exitCode: -1, output: '找不到 engine/tools/disc-watch.js' };
+  try {
+    fs.mkdirSync(path.dirname(WATCHER_LOG), { recursive: true });
+    const fd = fs.openSync(WATCHER_LOG, 'a');
+    let child;
+    try {
+      child = spawn(process.execPath, [WATCHER_SCRIPT, '--prompt'], {
+        cwd: WORKSPACE_ROOT,
+        detached: true,
+        stdio: ['ignore', fd, fd],
+        env: process.env,
+      });
+    } finally {
+      try { fs.closeSync(fd); } catch (e) { /* ignore */ }
+    }
+    child.unref();
+    sleepMs(400); // give it time to write its lock file
+    return { exitCode: 0, output: 'Started watcher (PID ' + child.pid + ').' };
+  } catch (e) {
+    return { exitCode: -1, output: 'Cannot start watcher: ' + ((e && e.message) || String(e)) };
+  }
+}
+
+function stopWatcherNow() {
+  const pid = readWatcherPid();
+  if (!pid) return { exitCode: 0, output: 'Watcher is not running.' };
+  try {
+    process.kill(pid, 'SIGTERM');
+    for (let i = 0; i < 20; i++) {
+      sleepMs(100);
+      if (!readWatcherPid()) break;
+    }
+    return { exitCode: 0, output: 'Stopped watcher (PID ' + pid + ').' };
+  } catch (e) {
+    return { exitCode: -1, output: 'Cannot stop watcher: ' + ((e && e.message) || String(e)) };
+  }
+}
+
 // ---------------------------------------------------------------- 子进程
 function toolsScript(name) {
   return path.join(WORKSPACE_ROOT, 'tools', name);
@@ -687,7 +884,18 @@ async function handleApi(req, res, method, requestPath, parsed) {
       payload,
       payloadPresets: presetsForClient,
       hasKey: !!getApiKey(),
+      platform: process.platform,
     });
+    return;
+  }
+
+  // ------------------------------------------------------------ GET /api/linux/integration
+  if (requestPath === '/api/linux/integration') {
+    if (process.platform !== 'linux') {
+      sendJson(res, { ok: true, platform: process.platform, supported: false });
+      return;
+    }
+    sendJson(res, linuxIntegrationInfo());
     return;
   }
 
@@ -941,6 +1149,34 @@ async function handleApi(req, res, method, requestPath, parsed) {
       } catch (e) { /* 打不开不影响响应 */ }
     }
     sendJson(res, { ok: true });
+    return;
+  }
+
+  // ------------------------------------------------------------ POST /api/linux/autostart
+  if (requestPath === '/api/linux/autostart') {
+    if (process.platform !== 'linux') {
+      sendFail(res, '这组接口只在 Linux 上可用。', 'S70');
+      return;
+    }
+    const body = await readJsonBody(req);
+    const action = body && body.action ? String(body.action) : '';
+    let result;
+    if (action === 'install') result = runWatcherCommand(['--install']);
+    else if (action === 'uninstall') result = runWatcherCommand(['--uninstall']);
+    else if (action === 'start') result = startWatcherNow();
+    else if (action === 'stop') result = stopWatcherNow();
+    else if (action === 'status') result = { exitCode: 0, output: '' };
+    else {
+      sendFail(res, '不认识的 action：' + action + '（install / uninstall / start / stop / status）', 'S71');
+      return;
+    }
+    sendJson(res, {
+      ok: result.exitCode === 0,
+      action,
+      exitCode: result.exitCode,
+      output: result.output,
+      info: linuxIntegrationInfo(),
+    });
     return;
   }
 

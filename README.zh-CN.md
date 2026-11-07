@@ -162,6 +162,7 @@ bash build/linux-disc/start.sh
    （`-ListDrives` 看光驱与空白介质；`-TestOnly` 只演练；`-Eject` 刻完弹出）。
 5. **插盘**：Windows 会带人设名弹一次 AutoPlay 提示，确认即运行 `start.cmd`；也可以自己双击。
    Linux 上运行 `bash /media/$USER/<盘>/start.sh`（没有 AutoPlay；可选守望者见 FAQ）。
+   Linux 版 Studio 的「07 出厂」页底部还能一键启用插盘自启。
 
 刻完可以回读复核：`Test-Disc.ps1 -Disc F:\`（Windows）或
 `node tools/test-disc.js --disc /media/$USER/<盘>`（Linux）会重新算一遍哈希。

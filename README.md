@@ -191,7 +191,7 @@ Everything lands in `persona\<slug>\`, `build\<slug>\` and `build\*.iso`.
    and blank media; `-TestOnly` dry-runs; `-Eject` when done).
 5. **Insert**. Windows shows an AutoPlay prompt with the persona's name — accept it, and
    `start.cmd` runs. Or double-click `start.cmd` yourself. On Linux run `bash /media/$USER/<disc>/start.sh`
-   (Linux has no AutoPlay; the optional watcher can do it for you).
+   (Linux has no AutoPlay; the optional watcher can do it for you, and the Studio final step offers a one-click Linux integration panel).
 
 The burned disc can be re-verified: `Test-Disc.ps1 -Disc F:\` (Windows) or
 `node tools/test-disc.js --disc /media/$USER/<disc>` (Linux) re-hashes everything.

@@ -24,6 +24,11 @@ node studio/server.js --port 0 --no-browser     # 让系统挑端口、不自动
 `tools/new-disc.js`、`tools/new-iso.js`、`tools/burn-iso.js`；「打开目录」用 `xdg-open`；光驱列表
 来自 `/dev/sr*`。浏览器会打开 `http://127.0.0.1:4791/`。服务只绑回环地址，局域网里的别人连不上。
 
+Linux 的「07 出厂」页底部会多一块 **Linux：插盘自动启动** 面板：自动识别发行版与包管理器、检查
+udisks2 / glib2 / zenity / xdg-utils 依赖，缺依赖时给出对应发行版的安装命令，并可一键启用或关闭
+XDG 登录自启、立即启停插盘守望者。对应接口：`GET /api/linux/integration`、
+`POST /api/linux/autostart`（`install` / `uninstall` / `start` / `stop` / `status`）。Windows 服务器没有这块面板。
+
 端口相关有两种情况会自动处理，不用手动改参数：
 
 - **已经有一个 Studio 在跑**（比如重复双击了 `start-studio.cmd`）：不会再起第二个，直接把浏览器指向那个实例，并打印它的地址；如果它服务的是别的工作区，会额外提醒一句。

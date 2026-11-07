@@ -48,6 +48,7 @@ const opts = {
   help: false,
   mode: 'prompt', // prompt | auto | notify
   homeRoot: '',
+  poll: false,
 };
 
 let logFile = '';
@@ -94,6 +95,7 @@ function usage() {
     '  --auto                Launch without asking.',
     '  --notify              Try a desktop notification with a 启动 action first, then fall back.',
     '  --no-mount            Do not auto-mount media; only react to what the desktop mounts.',
+    '  --poll                Use mount polling only (default: udisks2 D-Bus events + slow fallback).',
     '  --home-root <dir>     Pass a room root to the launcher (same as engine/launch.js --home-root).',
     '  --no-browser          Tell the launcher not to open a browser.',
     '  --dry-run             Detect and log, but start nothing (never prompts).',
@@ -133,6 +135,7 @@ function parseArgs(argv) {
     else if (lower === '--dry-run' || lower === '-dryrun') opts.dryRun = true;
     else if (lower === '--no-browser' || lower === '-nobrowser') opts.noBrowser = true;
     else if (lower === '--no-mount' || lower === '-nomount') opts.noMount = true;
+    else if (lower === '--poll' || lower === '-poll') opts.poll = true;
     else if (lower === '--once' || lower === '-once') opts.once = true;
     else if (lower === '--help' || lower === '-h' || lower === '-help') opts.help = true;
     else if (lower === '--prompt' || lower === '-prompt') opts.mode = 'prompt';
@@ -530,6 +533,69 @@ function uninstallWatcher() {
   return 0;
 }
 
+// ---------------------------------------------------------------- udisks2 events
+// The watcher reacts to udisks2 D-Bus signals (any UDisks2 activity -> debounced scan)
+// instead of relying on a 2.5 s poll. A slow poll stays as a safety net for systems
+// without gdbus/busctl and for events that arrive while the helper restarts.
+let eventChild = null;
+let eventDebounce = null;
+
+function stopEventSource() {
+  if (eventDebounce) { clearTimeout(eventDebounce); eventDebounce = null; }
+  if (eventChild) {
+    try { eventChild.kill('SIGTERM'); } catch (e) { /* ignore */ }
+    eventChild = null;
+  }
+}
+
+function noteUdisksActivity(source) {
+  if (eventDebounce) return;
+  eventDebounce = setTimeout(() => {
+    eventDebounce = null;
+    tick();
+  }, 400);
+}
+
+function startEventSource() {
+  if (opts.poll) {
+    writeLog('Event source: disabled (--poll), using mount polling only.', 'ready');
+    return false;
+  }
+  const monitors = [
+    { name: 'gdbus', args: ['monitor', '--system', '--dest', 'org.freedesktop.UDisks2'] },
+    { name: 'busctl', args: ['monitor', 'org.freedesktop.UDisks2'] },
+  ];
+  for (const monitor of monitors) {
+    if (!commandExists(monitor.name)) continue;
+    let child;
+    try {
+      child = spawn(monitor.name, monitor.args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) {
+      continue;
+    }
+    child.on('error', (err) => {
+      writeLog('udisks2 event source (' + monitor.name + ') failed: ' + ((err && err.message) || String(err)), 'warn');
+    });
+    child.stdout.on('data', (chunk) => {
+      // Any UDisks2 signal (property change on a drive/block device) is enough to scan.
+      if (String(chunk).trim().length > 0) noteUdisksActivity(monitor.name);
+    });
+    child.stderr.on('data', (chunk) => {
+      const text = String(chunk).trim();
+      if (text) writeLog('udisks2 event source (' + monitor.name + '): ' + text, 'warn');
+    });
+    child.on('exit', (code, signal) => {
+      if (signal === 'SIGTERM' || signal === 'SIGKILL') return;
+      writeLog('udisks2 event source (' + monitor.name + ') exited (' + (signal || code) + '); polling continues.', 'warn');
+    });
+    eventChild = child;
+    writeLog('Event source: ' + monitor.name + ' (org.freedesktop.UDisks2) + slow polling fallback.', 'ready');
+    return true;
+  }
+  writeLog('No udisks2 event source (gdbus/busctl) found; using mount polling only.', 'warn');
+  return false;
+}
+
 // ---------------------------------------------------------------- main
 function main() {
   const argError = parseArgs(process.argv.slice(2));
@@ -565,8 +631,8 @@ function main() {
     return;
   }
   process.on('exit', releaseLock);
-  process.on('SIGINT', () => { releaseLock(); process.exit(0); });
-  process.on('SIGTERM', () => { releaseLock(); process.exit(0); });
+  process.on('SIGINT', () => { stopEventSource(); releaseLock(); process.exit(0); });
+  process.on('SIGTERM', () => { stopEventSource(); releaseLock(); process.exit(0); });
 
   writeLog('diskLIFE disc watcher started (' + opts.mode + ' mode), waiting for a disc… (Ctrl+C to quit)', 'ready');
   writeLog('Log: ' + logFile, 'ready');
@@ -579,7 +645,10 @@ function main() {
     return;
   }
 
-  timer = setInterval(tick, POLL_INTERVAL_MS);
+  const eventsActive = startEventSource();
+  timer = setInterval(tick, eventsActive ? 10000 : POLL_INTERVAL_MS);
+
+  process.on('exit', stopEventSource);
 }
 
 main();

@@ -16,7 +16,7 @@
 | 生成 ISO（ISO 9660 + Joliet） | `tools/new-iso.js` | 内置写入器，无需任何第三方工具 |
 | 刻录 CD-R | `tools/burn-iso.js` | 可选：`wodim` / `cdrecord` / `cdrskin` / `growisofs` / `xorriso` |
 | Studio（本地网页工作台） | `start-studio.sh` → `studio/server.js` | Node.js + 浏览器 |
-| 插盘守望者（可选） | `engine/tools/disc-watch.js` | Node.js；用 udisks2 自动挂载，无需 root |
+| 插盘自启助手（可选） | `engine/tools/disc-watch.js` | Node.js；udisks2 事件 + XDG autostart，无需 root |
 | 插件载荷重建 | `tools/new-profile-payload.js` | Node.js + 已登录的 dsh + 网络（仅重建时） |
 
 刻录与守望者是可选能力：**没有光驱也能完整使用**（挂载 ISO 或直接对目录启动）。
@@ -192,7 +192,7 @@ node tools/test-disc.js --disc /media/$USER/<盘名>
 
 ---
 
-## 8. 插盘守望者：Linux 上的 AutoPlay 等价物（可选）
+## 8. 插盘自启助手：Linux 上的 AutoPlay 等价物（可选）
 
 Linux **没有** Windows 那种 AutoPlay：光盘上的 `autorun.inf` 不会被读取，GNOME/udisks 也刻意不允许从
 可移动介质直接执行程序（安全设计）。要接近「插入光盘 → 弹窗 → 启动」，需要一个常驻在**用户会话**里的小
@@ -212,6 +212,8 @@ node engine/tools/disc-watch.js --auto
 node engine/tools/disc-watch.js --notify
 # 不自动挂载，只响应桌面已经挂好的盘
 node engine/tools/disc-watch.js --no-mount
+# 强制只用挂载轮询（默认优先用 udisks2 D-Bus 事件）
+node engine/tools/disc-watch.js --poll
 
 # 只检测目录，不启动/prompt
 node engine/tools/disc-watch.js --test-root build/linux-disc --dry-run
@@ -219,8 +221,11 @@ node engine/tools/disc-watch.js --test-root build/linux-disc --dry-run
 
 行为：
 
-- 每 2.5 秒扫 `/proc/mounts`；如果盘还没有被桌面挂载，会用 `udisksctl mount -b /dev/srN` 自动挂载
-  （无 root；失败会写日志，不影响桌面自己的挂载）。
+- **事件驱动**：优先用 udisks2 的 D-Bus 信号（`gdbus monitor --system --dest org.freedesktop.UDisks2`，
+  没有 gdbus 时退到 `busctl monitor`）触发扫描；另保留 10 秒一次的低频轮询兜底。没有事件源或加
+  `--poll` 时退回 2.5 秒轮询。这样不依赖 `/proc/mounts` 轮询频率，插盘后通常 1 秒内响应。
+- 如果盘还没有被桌面挂载，会用 `udisksctl mount -b /dev/srN` 自动挂载（无 root；失败写日志，
+  不影响桌面自己的挂载）。
 - 识别依据是盘根同时有 `pad.bin` 与 `persona/persona.yml`；从 `persona/meta.json` 取人设名，弹窗文案形如
   「检测到 diskLIFE 光盘：蓝色大肥鱼 (v1.0.0) — 启动 / 稍后」。
 - 选「启动」→ 以 `--no-wait` 拉起 `engine/launch.js` 并打开浏览器；选「稍后」→ 本次不再询问，拔出重插会再问。
@@ -228,9 +233,23 @@ node engine/tools/disc-watch.js --test-root build/linux-disc --dry-run
 - 单实例锁 `${XDG_STATE_HOME:-~/.local/state}/disklife/disc-watch.pid`，登录自启和手动启动不会起两份。
 - 日志：`${XDG_STATE_HOME:-~/.local/state}/disklife/disc-watch.log`。
 
+### 8.1 在 Studio 里一键配置
+
+Linux 版 Studio 的「07 出厂」页底部有一块 **Linux：插盘自动启动** 面板（仅 Linux 服务器会出现）：
+
+- 自动识别发行版（`/etc/os-release`）与包管理器（pacman / apt / dnf / zypper / apk / xbps / nix）；
+- 显示依赖状态（udisks2、glib2/gdbus、zenity/kdialog、xdg-utils）以及事件源；
+- 缺依赖时给出**对应发行版的安装命令**（复制即可）；
+- 「启用登录自启 / 关闭登录自启」直接调用 `disc-watch.js --install/--uninstall`；
+- 「现在启动 / 停止守望者」立即起停，不需要等下次登录。
+
+对应 HTTP 接口：`GET /api/linux/integration`、`POST /api/linux/autostart`
+（`{action: install|uninstall|start|stop|status}`），同样只监听 127.0.0.1。
+
 > 更「零常驻」的方案是 udev 规则 + systemd 用户单元，在设备插入事件里触发；这需要一次性 root 安装，
-> 而且不同发行版的 systemd/udev 组合行为有差异，本仓库不自动安装。日常使用 `--install` 的登录自启已经足够。
-> Linux 没有 AutoPlay 是系统安全策略，不是本项目的缺失；守望者不会绕过挂载策略，也不会以 root 运行。
+> 而且不同发行版的 systemd/udev 组合行为有差异，本仓库不自动安装。日常使用 `--install` 的登录自启
+> + udisks2 事件已经足够。Linux 没有 AutoPlay 是系统安全策略，不是本项目的缺失；守望者不会绕过挂载策略，
+> 也不会以 root 运行。
 
 ---
 

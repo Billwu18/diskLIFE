@@ -66,6 +66,7 @@ jobs:
         run: |
           node --check studio\web\app.js
           node --check studio\web\card-import.js
+          node --check studio\web\linux-integration.js
 
   linux:
     runs-on: ubuntu-latest
@@ -83,6 +84,7 @@ jobs:
           for f in $(git ls-files '*.js' | grep -v '^payload/' | grep -v '^studio/web/'); do node --check "$f"; done
           node --check studio/web/app.js
           node --check studio/web/card-import.js
+          node --check studio/web/linux-integration.js
           echo "all Linux scripts parse"
 
       - name: Shell hygiene — LF only, no BOM, ASCII for start.sh
