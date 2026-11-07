@@ -175,7 +175,7 @@ PowerShell versions (`DISC_OK`, `PASS`/`FAIL`, `ISO_OK`/`ISO_FAIL`, `BURN_OK`/`B
 `PAYLOAD_OK`/`PAYLOAD_FAIL`).
 
 ```sh
-# 1) build a disc tree
+# 1) build a dual-boot disc tree (Linux start.sh + Windows start.cmd/autorun.inf)
 node tools/new-disc.js --persona examples/sample-persona --out build/linux-disc
 node tools/new-disc.js --persona examples/sample-persona --out build/linux-disc --reuse-pad
 node tools/new-disc.js --persona examples/sample-persona --out build/linux-disc --payload-preset token --force
@@ -207,7 +207,8 @@ Differences from the PowerShell side:
 | Burner | IMAPI2 | `xorriso` / `cdrskin` / `wodim` / `cdrecord` / `growisofs` |
 | Drive selector | `-DriveLetter F` | `--drive /dev/sr0` (or bare `sr0`) |
 | Executable bits on the disc | n/a | Joliet does not store them; start with `bash start.sh` |
-| Launch entry | `start.cmd` | `start.sh` |
+| Launch entry | `start.cmd` + `autorun.inf` | `start.sh` |
+| One disc, both OSes | yes — the packer requires both entries and both engines (`launch.ps1`, `launch.js`) |
 
 Error codes are shared: `I01`–`I05` (ISO; `I05` is the post-write verification), `B01`–`B08` (burn),
 `PL00`–`PL05` (payload). `B06` also covers "no burning tool installed" and "writer cannot open the drive"

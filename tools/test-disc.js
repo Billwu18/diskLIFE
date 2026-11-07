@@ -92,6 +92,7 @@ function runChecks(discPath) {
     const requiredFiles = [
         'autorun.inf',
         'start.sh',
+        'start.cmd',
         'README.txt',
         'pad.bin',
         '.discpersona/manifest.json',
@@ -101,9 +102,9 @@ function runChecks(discPath) {
     for (const rel of requiredFiles) {
         addCheck('exists: ' + rel, common.isFile(path.join(discPath, rel)), 'file missing');
     }
-    addCheck('at least one of start.sh / start.cmd exists',
-        common.isFile(path.join(discPath, 'start.sh')) || common.isFile(path.join(discPath, 'start.cmd')),
-        'the disc has no launcher entry point');
+    addCheck('dual-boot entry points exist (start.sh + start.cmd)',
+        common.isFile(path.join(discPath, 'start.sh')) && common.isFile(path.join(discPath, 'start.cmd')),
+        'one disc should boot on both Linux and Windows; one entry point is missing');
 
     // ------------------------------------------------------------------
     // 2. manifest.json
@@ -346,9 +347,9 @@ function runChecks(discPath) {
     }
 
     // ------------------------------------------------------------------
-    // 7. start.cmd (optional; validated only when present)
+    // 7. start.cmd (Windows entry point; required for a dual-boot disc)
     // ------------------------------------------------------------------
-    out.section('[start.cmd (optional)]');
+    out.section('[start.cmd]');
     const startPath = path.join(discPath, 'start.cmd');
     if (common.isFile(startPath)) {
         const bytes = fs.readFileSync(startPath);
@@ -362,34 +363,36 @@ function runChecks(discPath) {
         const text = common.readTextFile(startPath);
         const problem = crlfProblem(text);
         addCheck('start.cmd uses CRLF line endings', problem === '', problem);
+        addCheck('start.cmd references engine\\launch.ps1',
+            /engine\\launch\.ps1/.test(text), 'does not call engine\\launch.ps1');
         if (/placeholder start\.cmd/.test(text)) {
-            addNote('start.cmd is a placeholder (the workspace had no start.cmd when packing) - this disc cannot start on Windows yet.');
+            addCheck('start.cmd is a real launcher (not the packer placeholder)',
+                false, 'this disc cannot start on Windows');
         }
     } else {
-        addNote('no start.cmd on the disc (Windows entry point absent; start.sh is the Linux entry).');
+        addCheck('start.cmd exists so Windows can start this disc', false, 'file missing');
     }
 
     // ------------------------------------------------------------------
-    // 8. engine (optional)
+    // 8. engine (both launchers are required for a dual-boot disc)
     // ------------------------------------------------------------------
-    out.section('[engine (optional)]');
+    out.section('[engine]');
     const engineDir = path.join(discPath, 'engine');
     if (common.isDirectory(engineDir)) {
         const engineFiles = common.walkFiles(engineDir);
         if (engineFiles.length === 0) {
-            addNote('engine/ exists but is empty - no engine on the disc; starting will fail with code E01.');
+            addCheck('engine/ is not empty (both launchers live there)', false,
+                'engine/ is empty; neither Windows nor Linux can start');
         } else {
             addCheck('engine/ has ' + engineFiles.length + ' files', true);
             const hasLaunchJs = common.isFile(path.join(engineDir, 'launch.js'));
             const hasLaunchPs1 = common.isFile(path.join(engineDir, 'launch.ps1'));
-            if (hasLaunchJs) addNote('engine/launch.js present (Linux launcher)');
-            if (hasLaunchPs1) addNote('engine/launch.ps1 present (Windows launcher)');
-            if (!hasLaunchJs && !hasLaunchPs1) {
-                addNote('engine/ has neither launch.js nor launch.ps1; launching will fail.');
-            }
+            addCheck('engine/launch.js present (Linux launcher)', hasLaunchJs, 'file missing');
+            addCheck('engine/launch.ps1 present (Windows launcher)', hasLaunchPs1, 'file missing');
         }
     } else {
-        addNote('no engine/ on the disc (the workspace had no engine when packing) - starting will fail with code E01.');
+        addCheck('engine/ directory present', false,
+            'no engine/ on the disc; neither Windows nor Linux can start');
     }
 
     // ------------------------------------------------------------------

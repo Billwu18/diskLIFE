@@ -32,8 +32,11 @@ persona room layout and all machine-readable output with the Windows side.
 - **Docs and CI** — `docs/linux.md`, Linux sections in both READMEs, `engine.md`, `DISC-SPEC.md`,
   `studio.md`, `tools/README.md`; a `linux` job in `.github/workflows/checks.yml`; integration tests
   under `tests/`.
-- Discs built by `new-disc.js` still carry `start.cmd` and `autorun.inf`, so one disc boots on both
-  Windows and Linux; `new-disc.js` always includes `start.sh` and `engine/launch.js`.
+- Discs built by `new-disc.js` are dual-boot by contract: the packer now **fails** unless `start.sh`,
+  `start.cmd`, `engine/launch.js` and `engine/launch.ps1` are all present; `test-disc.js` requires both
+  entry points and both engines (48 checks). One disc boots on Windows (`start.cmd` + `autorun.inf`)
+  and Linux (`start.sh`).
+- The Studio Linux panel adds “copy install command” and “open the distro package page” actions.
 
 ### Changed
 
@@ -98,8 +101,10 @@ Linux 支持：整套流水线新增并行的 Node.js 实现，与 Windows 侧�
 - **文档与 CI** — 新增 `docs/linux.md`，两份 README、`engine.md`、`DISC-SPEC.md`、`studio.md`、
   `tools/README.md` 增补 Linux 说明；`.github/workflows/checks.yml` 新增 `linux` job；
   `tests/` 下新增集成测试。
-- `new-disc.js` 仍会写入 `start.cmd` 与 `autorun.inf`，并总是带上 `start.sh` 与 `engine/launch.js`，
-  因此同一张盘可在 Windows / Linux 上启动。
+- `new-disc.js` 现在是**双启动契约**：缺少 `start.sh`、`start.cmd`、`engine/launch.js`、`engine/launch.ps1`
+  任意一个都会拒绝出盘；`test-disc.js` 也把两个入口和两套引擎列为必需（48 项检查）。同一张盘在
+  Windows（`start.cmd` + `autorun.inf`）和 Linux（`start.sh`）都能启动。
+- Studio 的 Linux 面板增加「复制安装命令」和「打开发行版包页面」。
 
 ### 变更
 

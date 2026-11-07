@@ -160,6 +160,9 @@ bash start.sh --start-timeout-sec 90
 
 ## 7. ISO 与刻录
 
+新打出的盘是**双启动**的：Windows 用 `start.cmd` + `autorun.inf`，Linux 用 `start.sh`；打包器现在会强制要求
+两个入口和两套引擎（`engine/launch.ps1`、`engine/launch.js`）都在，缺一个就拒绝出盘。
+
 生成 ISO（ISO 9660 + Joliet，中文文件名不丢；生成后会**回读校验**每个文件与大小）：
 
 ```sh
@@ -244,7 +247,7 @@ Linux 版 Studio 的「07 出厂」页底部有一块 **Linux：插盘自动启�
 
 - 自动识别发行版（`/etc/os-release`）与包管理器（pacman / apt / dnf / zypper / apk / xbps / nix）；
 - 显示依赖状态（udisks2、glib2/gdbus、zenity/kdialog、xdg-utils）以及事件源；
-- 缺依赖时给出**对应发行版的安装命令**（复制即可）；
+- 缺依赖时给出**对应发行版的安装命令**，带「复制命令」和「打开下载页面」（对应发行版包页面）；
 - 「启用登录自启 / 关闭登录自启」直接调用 `disc-watch.js --install/--uninstall`；
 - 「现在启动 / 停止守望者」立即起停，不需要等下次登录。
 

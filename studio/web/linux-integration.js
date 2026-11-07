@@ -82,12 +82,23 @@
 
     var installRow = document.getElementById('linux-install-row');
     var installCmd = document.getElementById('linux-install-cmd');
+    var installActions = document.getElementById('linux-install-actions');
+    var downloadLink = document.getElementById('linux-link-download');
     if (info.installCommand) {
       installRow.hidden = false;
       installCmd.textContent = info.installCommand;
+      installActions.hidden = false;
+      var packageUrl = (info.distro && info.distro.packageUrl) || '';
+      if (packageUrl) {
+        downloadLink.href = packageUrl;
+        downloadLink.hidden = false;
+      } else {
+        downloadLink.hidden = true;
+      }
     } else {
       installRow.hidden = true;
       installCmd.textContent = '';
+      installActions.hidden = true;
     }
 
     var autostartBtn = document.getElementById('linux-btn-autostart');
@@ -98,6 +109,38 @@
     startBtn.textContent = autostart.running
       ? T('停止守望者', 'Stop watcher')
       : T('现在启动守望者', 'Start watcher now');
+  }
+
+  function legacyCopy(text) {
+    var area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', 'readonly');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(area);
+    return ok;
+  }
+
+  function copyInstallCommand() {
+    var button = document.getElementById('linux-btn-copy');
+    var command = document.getElementById('linux-install-cmd').textContent || '';
+    if (!command) return;
+    var done = function (ok) {
+      if (!button) return;
+      button.textContent = ok ? T('已复制', 'Copied') : T('复制失败', 'Copy failed');
+      setTimeout(function () {
+        button.textContent = T('复制命令', 'Copy command');
+      }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(command).then(function () { done(true); }, function () { done(legacyCopy(command)); });
+    } else {
+      done(legacyCopy(command));
+    }
   }
 
   function setBusy(busy) {
@@ -157,7 +200,11 @@
       '    <p class="hint tight" id="linux-state"></p>',
       '    <p class="hint tight" id="linux-install-row" hidden>' +
       escapeHtml(T('缺少依赖时，可用对应发行版命令安装：', 'Missing dependencies — install them with:')) +
-      '<br><code id="linux-install-cmd" style="font-family:var(--mono);font-size:11.5px"></code></p>',
+      '<br><code id="linux-install-cmd" style="font-family:var(--mono);font-size:11.5px"></code>' +
+      '<span id="linux-install-actions" hidden> ' +
+      '<button class="btn ghost" id="linux-btn-copy" type="button"></button> ' +
+      '<a class="btn ghost" id="linux-link-download" target="_blank" rel="noopener"></a>' +
+      '</span></p>',
       '  </div>',
       '  <div class="burn-row">',
       '    <button class="btn" id="linux-btn-autostart"></button>',
@@ -170,6 +217,13 @@
     if (checks && checks.parentNode === panel) panel.insertBefore(card, checks);
     else panel.appendChild(card);
 
+    document.getElementById('linux-btn-copy').textContent = T('复制命令', 'Copy command');
+    document.getElementById('linux-btn-copy').addEventListener('click', copyInstallCommand);
+    var download = document.getElementById('linux-link-download');
+    download.textContent = T('打开下载页面', 'Open download page');
+    download.addEventListener('click', function (event) {
+      if (!download.getAttribute('href')) event.preventDefault();
+    });
     document.getElementById('linux-btn-autostart').addEventListener('click', function () {
       var installed = document.getElementById('linux-btn-autostart').textContent.indexOf(T('关闭', 'Disable')) >= 0;
       act(installed ? 'uninstall' : 'install');

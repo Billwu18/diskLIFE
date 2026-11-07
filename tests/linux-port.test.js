@@ -271,6 +271,7 @@ test('Studio exposes Linux integration and toggles the autostart entry', async (
     assert.equal(info.ok, true);
     assert.equal(info.platform, 'linux');
     assert.ok(info.distro && info.distro.id, 'distro must be detected');
+    assert.match(info.distro.packageUrl || '', /^https?:\/\//, 'distro package page URL');
     assert.equal(info.autostart.installed, false);
 
     const install = await (await fetch(studio.url + 'api/linux/autostart', {

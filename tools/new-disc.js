@@ -542,6 +542,19 @@ function buildDisc(personaArg, outArg, opts) {
             }
         }
 
+        // A disc built from this repo is meant to boot on both Windows and Linux.
+        // Fail early instead of producing a disc that only works on one of them.
+        const dualBootMissing = [];
+        if (!hasStartSh) dualBootMissing.push('start.sh (Linux entry)');
+        if (!hasStartCmd) dualBootMissing.push('start.cmd (Windows entry)');
+        if (!common.isFile(path.join(tmpPath, 'engine', 'launch.js'))) dualBootMissing.push('engine/launch.js (Linux launcher)');
+        if (!common.isFile(path.join(tmpPath, 'engine', 'launch.ps1'))) dualBootMissing.push('engine/launch.ps1 (Windows launcher)');
+        if (dualBootMissing.length > 0) {
+            throw new Error('A dual-boot disc needs both launchers; missing from this build: ' +
+                dualBootMissing.join(', ') + '. Restore those files in the workspace and rebuild.');
+        }
+        out.ok('dual-boot entries present: start.sh + start.cmd, engine/launch.js + engine/launch.ps1');
+
         // --------------------------------------------------------------
         // [6/7] payload / autorun.inf / README.txt
         // --------------------------------------------------------------

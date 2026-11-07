@@ -25,7 +25,7 @@ node studio/server.js --port 0 --no-browser     # 让系统挑端口、不自动
 来自 `/dev/sr*`。浏览器会打开 `http://127.0.0.1:4791/`。服务只绑回环地址，局域网里的别人连不上。
 
 Linux 的「07 出厂」页底部会多一块 **Linux：插盘自动启动** 面板：自动识别发行版与包管理器、检查
-udisks2 / glib2 / zenity / xdg-utils 依赖，缺依赖时给出对应发行版的安装命令，并可一键启用或关闭
+udisks2 / glib2 / zenity / xdg-utils 依赖，缺依赖时给出对应发行版的安装命令，带「复制命令」/「打开下载页面」（发行版包页面），并可一键启用或关闭
 XDG 登录自启、立即启停插盘守望者。对应接口：`GET /api/linux/integration`、
 `POST /api/linux/autostart`（`install` / `uninstall` / `start` / `stop` / `status`）。Windows 服务器没有这块面板。
 

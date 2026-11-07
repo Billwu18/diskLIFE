@@ -437,6 +437,17 @@ function detectDistro() {
   else if (families.some((v) => v === 'alpine')) family = 'alpine';
   else if (families.some((v) => v === 'nixos')) family = 'nixos';
 
+  const packageUrls = {
+    arch: 'https://archlinux.org/packages/?q=udisks2',
+    debian: 'https://packages.debian.org/search?keywords=udisks2',
+    ubuntu: 'https://packages.ubuntu.com/search?keywords=udisks2',
+    fedora: 'https://packages.fedoraproject.org/search?query=udisks2',
+    suse: 'https://software.opensuse.org/search?baseproject=ALL&q=udisks2',
+    alpine: 'https://pkgs.alpinelinux.org/packages?name=udisks2',
+    nixos: 'https://search.nixos.org/packages?channel=unstable&query=udisks2',
+  };
+  const packageUrl = packageUrls[id] || packageUrls[family] || '';
+
   const packageManagers = [
     ['pacman', 'pacman', 'sudo pacman -S --needed udisks2 glib2 zenity xdg-utils'],
     ['apt-get', 'apt', 'sudo apt install udisks2 libglib2.0-bin zenity xdg-utils'],
@@ -456,6 +467,7 @@ function detectDistro() {
         family,
         packageManager: item[1],
         installCommand: item[2],
+        packageUrl: packageUrl,
       };
     }
   }
@@ -475,6 +487,7 @@ function detectDistro() {
     family,
     packageManager: '',
     installCommand: familyHint[family] || '',
+    packageUrl: packageUrl,
   };
 }
 
