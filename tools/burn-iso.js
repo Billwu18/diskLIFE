@@ -3,8 +3,8 @@
 
 // Burn an ISO to a CD/DVD/BD writer on Linux.
 //
-// Wraps whichever writer tool is installed (xorriso / cdrecord / wodim /
-// growisofs). Drive and media information comes from /dev/sr* and /sys/block
+// Wraps whichever writer tool is installed (xorriso / cdrskin / cdrecord /
+// wodim / growisofs). Drive and media information comes from /dev/sr* and /sys/block
 // so --list-drives works even when no writer tool is installed.
 
 const fs = require('fs');
@@ -68,7 +68,7 @@ function which(name) {
 
 function writerTools() {
     const found = [];
-    for (const name of ['xorriso', 'cdrecord', 'wodim', 'growisofs']) {
+    for (const name of ['xorriso', 'cdrskin', 'cdrecord', 'wodim', 'growisofs']) {
         const tool = which(name);
         if (tool) found.push({ name: name, path: tool });
     }
@@ -176,6 +176,37 @@ function probeBurnSupport(tools, device) {
     return null;
 }
 
+// Open the drive with the writer tool and report whether it is usable.
+// This is what --test-only means: the writer really opened the device (not just stat'ed /dev/sr0).
+function checkDrive(tools, device) {
+    const tool = tools.find(function (item) { return item.name === 'xorriso'; }) ||
+        tools.find(function (item) { return item.name === 'cdrskin'; }) ||
+        tools.find(function (item) { return item.name !== 'growisofs'; });
+    if (!tool) return { ok: null, text: '', tool: null };
+    const args = tool.name === 'xorriso'
+        ? ['-as', 'cdrecord', '-checkdrive', 'dev=' + device]
+        : ['-checkdrive', 'dev=' + device];
+    const result = spawnSync(tool.path, args, { encoding: 'utf8', timeout: 30000 });
+    const text = ((result.stdout || '') + '\n' + (result.stderr || '')).trim();
+    return { ok: result.status === 0, text: text, tool: tool.name };
+}
+
+// Pick the most useful lines out of a writer tool's output (last line alone is often just "aborting").
+function summarizeWriterError(text) {
+    const lines = String(text || '').split(/\r?\n/).map(function (line) { return line.trim(); }).filter(Boolean);
+    const interesting = lines.filter(function (line) {
+        return /FAILURE|FATAL|Lost connection|Permission denied|cannot access|Cannot acquire|cannot open|Cannot open|No media|no media|not blank|already|host problem|SCSI command/i.test(line);
+    });
+    const chosen = (interesting.length > 0 ? interesting : lines).slice(0, 2);
+    return chosen.join(' / ').replace(/^xorriso\s*:\s*/i, '').replace(/^cdrskin\s*:\s*/i, '');
+}
+
+function connectionProblemHint() {
+    return 'The kernel log shows repeated USB disconnects/resets for this drive. ' +
+        'Replug it into another USB port (prefer a rear/motherboard port, no hub), use another cable, ' +
+        'and check the drive on a machine with enough USB power. Then run --list-drives again.';
+}
+
 function failBurn(code, reason, hint) {
     out.blank();
     out.fail(reason);
@@ -240,7 +271,7 @@ function main() {
         }
         if (drives.length === 0) out.line('  (no drives found)');
         if (tools.length === 0) {
-            out.line('  (no writer tool found: install xorriso, cdrecord/wodim or growisofs to burn)');
+            out.line('  (no writer tool found: install xorriso, cdrskin, cdrecord/wodim or growisofs to burn)');
         } else {
             out.line('  Writer tool(s): ' + tools.map(function (tool) { return tool.name; }).join(', '));
         }
@@ -275,7 +306,7 @@ function main() {
     const tools = writerTools();
     if (tools.length === 0) {
         failBurn('B06',
-            'No CD/DVD writer tool found (looked for xorriso, cdrecord, wodim, growisofs).',
+            'No CD/DVD writer tool found (looked for xorriso, cdrskin, cdrecord, wodim, growisofs).',
             'Install one, for example: sudo apt install xorriso   (or wodim, or dvd+rw-tools for growisofs).');
     }
 
@@ -304,13 +335,27 @@ function main() {
         out.warn('Note: the media is not blank (' + media.raw + '); --test-only only checks the link and does not write.');
     }
 
+    // A writer that cannot open the drive usually means a cable/power problem or a stuck medium.
+    // --test-only promises "the link works", so it must actually open the drive, like the PS burner does.
+    const probe = (opts.testOnly || !media) ? checkDrive(tools, device) : null;
+    if (probe && probe.ok === false) {
+        const summary = summarizeWriterError(probe.text) || 'the writer could not open the drive';
+        if (/no media|not ready|medium not present/i.test(probe.text) && !info.mediaPresent) {
+            failBurn('B03', 'No media in the drive: ' + device, 'Insert a blank CD-R / DVD-R and try again.');
+        }
+        failBurn('B06', 'Cannot open the drive for writing: ' + device + ' (' + summary + ')',
+            connectionProblemHint());
+    }
+
     // ---------------------------------------------------------------- burn
     if (opts.testOnly) {
-        out.line('  Test-only: the drive opened, the link works, skipping the actual write.');
+        out.line('  Test-only: the writer opened the drive (' + (probe && probe.tool ? probe.tool : 'writer') +
+            '); skipping the actual write.');
         completeBurn(device, 0);
     }
 
     const preferred = tools.find(function (tool) { return tool.name === 'xorriso'; }) ||
+        tools.find(function (tool) { return tool.name === 'cdrskin'; }) ||
         tools.find(function (tool) { return tool.name === 'cdrecord'; }) ||
         tools.find(function (tool) { return tool.name === 'wodim'; }) ||
         tools[0];
@@ -338,8 +383,17 @@ function main() {
     });
     if (result.status !== 0) {
         const combined = ((result.stderr || '') + '\n' + (result.stdout || '')).trim();
-        const lines = combined.split(/\r?\n/).filter(Boolean);
-        const reasonLine = lines.length > 0 ? lines[lines.length - 1] : 'writer exited with code ' + result.status;
+        const reasonLine = summarizeWriterError(combined) || ('writer exited with code ' + result.status);
+        if (/Lost connection|Cannot acquire|cannot access|Permission denied|host problem|SCSI command/i.test(combined)) {
+            failBurn('B06', 'Lost the drive while writing: ' + reasonLine, connectionProblemHint());
+        }
+        if (/No media|no media|not ready|medium not present/i.test(combined)) {
+            failBurn('B03', 'No media in the drive: ' + reasonLine, 'Insert a blank CD-R / DVD-R and try again.');
+        }
+        if (/not blank|already (has|contains)|has already been written/i.test(combined)) {
+            failBurn('B04', 'This disc already has content: ' + reasonLine,
+                'Insert a blank disc; add --test-only to check the drive/link only.');
+        }
         failBurn('B07', 'Write failed: ' + reasonLine,
             'Try another blank disc; if it keeps failing, check the drive and the media for wear.');
     }

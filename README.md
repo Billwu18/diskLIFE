@@ -120,7 +120,7 @@ type is what the persona gets.
 | Shell | Windows: Windows PowerShell 5.1 (included). Linux: POSIX `sh` + Node.js >= 18 |
 | Runtime | DeepSeek Harness **0.2.x** installed and logged in (`dsh` on `PATH`) |
 | Optional | A CD-R/CD-RW drive for actual burning; without one, mount the ISO instead |
-| Optional (Linux) | `wodim` / `cdrecord` / `growisofs` / `xorriso` for burning, `xdg-open` for the browser |
+| Optional (Linux) | `xorriso` / `cdrskin` / `wodim` / `cdrecord` / `growisofs` for burning, `xdg-open` for the browser |
 | Disk | ~2 MB for the project + a few MB per persona room (more with plugins) |
 
 macOS is not supported. Linux is supported through a parallel Node.js implementation that keeps the

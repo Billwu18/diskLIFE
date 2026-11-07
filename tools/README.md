@@ -187,7 +187,7 @@ node tools/test-disc.js --disc build/linux-disc
 node tools/new-iso.js --source build/linux-disc --out build/linux-disc.iso
 node tools/new-iso.js --source build/linux-disc --out build/disc.iso --volume-label ARIS --force
 
-# 4) burn (optional; needs wodim/cdrecord/growisofs/xorriso and a real drive)
+# 4) burn (optional; needs xorriso/cdrskin/wodim/cdrecord/growisofs and a real drive)
 node tools/burn-iso.js --list-drives
 node tools/burn-iso.js --iso-path build/linux-disc.iso --drive /dev/sr0 --test-only
 node tools/burn-iso.js --iso-path build/linux-disc.iso --drive /dev/sr0 --eject
@@ -202,10 +202,12 @@ Differences from the PowerShell side:
 | | Windows | Linux |
 | --- | --- | --- |
 | ISO writer | IMAPI2 | built-in ISO9660 + Joliet writer; uses `xorriso`/`genisoimage`/`mkisofs` when present |
-| Burner | IMAPI2 | `wodim` / `cdrecord` / `growisofs` / `xorriso -as cdrecord` |
+| Burner | IMAPI2 | `xorriso` / `cdrskin` / `wodim` / `cdrecord` / `growisofs` |
 | Drive selector | `-DriveLetter F` | `--drive /dev/sr0` (or bare `sr0`) |
 | Executable bits on the disc | n/a | Joliet does not store them; start with `bash start.sh` |
 | Launch entry | `start.cmd` | `start.sh` |
 
 Error codes are shared: `I01`–`I05` (ISO; `I05` is the post-write verification), `B01`–`B08` (burn),
-`PL00`–`PL05` (payload). `B06` also covers "no burning tool installed".
+`PL00`–`PL05` (payload). `B06` also covers "no burning tool installed" and "writer cannot open the drive"
+(e.g. a USB drive that keeps disconnecting, or a permissions problem). `--test-only` really opens the
+drive with the writer, so it fails loudly instead of reporting a false success.

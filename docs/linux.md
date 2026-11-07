@@ -14,7 +14,7 @@
 | 打包光盘目录 | `tools/new-disc.js` | Node.js |
 | 静态校验 | `tools/test-disc.js` | Node.js |
 | 生成 ISO（ISO 9660 + Joliet） | `tools/new-iso.js` | 内置写入器；有 `xorriso`/`genisoimage`/`mkisofs` 时自动优先使用 |
-| 刻录 CD-R | `tools/burn-iso.js` | 可选：`wodim` / `cdrecord` / `growisofs` / `xorriso` |
+| 刻录 CD-R | `tools/burn-iso.js` | 可选：`wodim` / `cdrecord` / `cdrskin` / `growisofs` / `xorriso` |
 | Studio（本地网页工作台） | `start-studio.sh` → `studio/server.js` | Node.js + 浏览器 |
 | 插盘守望者（可选） | `engine/tools/disc-watch.js` | Node.js；需要系统自动挂载光盘 |
 | 插件载荷重建 | `tools/new-profile-payload.js` | Node.js + 已登录的 dsh + 网络（仅重建时） |
@@ -30,7 +30,7 @@
 | 系统 | Linux（x86_64 / arm64 均可） |
 | 运行时 | DeepSeek Harness **0.2.x**，已安装并登录过一次（`dsh` 在 `PATH` 上） |
 | Node.js | ≥ 18（`node` 或 `nodejs` 在 `PATH` 上；也可用 `DISKLIFE_NODE` 指定） |
-| 可选 | 光驱 + `wodim`/`cdrecord`/`growisofs`/`xorriso`；`xdg-open` 用于自动开浏览器 |
+| 可选 | 光驱 + `wodim`/`cdrecord`/`cdrskin`/`growisofs`/`xorriso`；`xdg-open` 用于自动开浏览器 |
 | 空间 | 项目约 2 MB；每个房间几 MB（装插件更多） |
 
 `engine/launch.js` 只接受 Linux（其他系统报 E05，提示在 Windows 上用 `start.cmd`）。
@@ -176,7 +176,8 @@ node tools/burn-iso.js --iso-path build/linux-disc.iso --drive /dev/sr0 --test-o
 node tools/burn-iso.js --iso-path build/linux-disc.iso --drive /dev/sr0 --eject
 ```
 
-写入器自动探测 `wodim` → `cdrecord` → `growisofs` → `xorriso`（`xorriso -as cdrecord`）。
+写入器自动探测 `xorriso` → `cdrskin` → `cdrecord` → `wodim` → `growisofs`（`xorriso -as cdrecord`）。
+`--test-only` 会真正用写入器打开设备（不是只看 `/dev/sr0` 是否存在），打不开就报 B06，不会假报成功。
 错误码与 Windows 一致：B01 没有该设备 / B02 设备不能刻 / B03 没有介质或介质不支持 /
 B04 介质非空白 / B05 ISO 不存在或为空 / B06 打不开或工具缺失 / B07 写入失败 / B08 回读仍为空。
 刻完可回读校验：
@@ -280,6 +281,6 @@ CI 在 `ubuntu-latest` 上跑同一组命令（见 `.github/workflows/checks.yml
 | `E09` | 60 秒内没等到就绪 URL；看 `logs/stdout-*.log` 最后 15 行。 |
 | `E10` | 这个房间已经有一个实例在跑（退出码 0，会打开已有地址）。 |
 | `ISO_FAIL I05` | 写出的 ISO 回读校验不匹配；重试或改用 `xorriso`。 |
-| `BURN_FAIL B06` | 没装写入工具；安装 `cdrtools`（wodim）或 `xorriso`，或先用 `--list-drives` 确认。 |
+| `BURN_FAIL B06` | 没装写入工具（装 `cdrtools`/`cdrskin`/`xorriso`），或写入器打不开设备（USB 掉线/供电不足/权限）。先看 `journalctl -k \| tail -30` 有没有反复 `USB disconnect` / `reset`；换 USB 口（优先后置口、别用 hub）、换线、用双头供电线。 |
 | 插盘没反应 | 盘没有被自动挂载，或挂载点不满足 `pad.bin` + `persona/persona.yml`；先手动挂载再试。 |
 | `bash start.sh` 正常但双击不行 | 介质被挂成 `noexec`（常见于 udisks 默认策略）；用 `bash` 启动，或挂载时加 `exec`。 |

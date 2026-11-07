@@ -93,7 +93,7 @@ Studio 跟随浏览器：中文环境（`zh-*`）显示中文，其它语言环�
 | Shell | Windows：Windows PowerShell 5.1（系统自带）。Linux：POSIX `sh` + Node.js ≥ 18 |
 | 运行时 | DeepSeek Harness **0.2.x**，已安装并登录（`dsh` 在 `PATH` 上） |
 | 可选 | 一台 CD-R/CD-RW 光驱；没有也能用（挂载 ISO） |
-| 可选（Linux） | 刻录用 `wodim` / `cdrecord` / `growisofs` / `xorriso`，开浏览器用 `xdg-open` |
+| 可选（Linux） | 刻录用 `xorriso` / `cdrskin` / `wodim` / `cdrecord` / `growisofs`，开浏览器用 `xdg-open` |
 | 空间 | 项目约 2 MB；每间房几 MB（装插件更多） |
 
 macOS 不支持。Linux 由一份并行的 Node.js 实现支持：光盘格式与房间布局完全一致；Node 本来就是
@@ -303,7 +303,7 @@ Studio 的「07 出厂」页也有对应的四张卡片。用的是哪一组，�
 | Shell | Windows：Windows PowerShell 5.1（系统自带）。Linux：POSIX `sh` + Node.js ≥ 18 |
 | 运行时 | 已安装并登录过的 DeepSeek Harness **0.2.x**（`dsh` 在 `PATH` 里） |
 | 可选 | 真刻盘需要一台 CD-R/CD-RW 光驱；没有光驱就挂载 ISO |
-| 可选（Linux） | 刻录用 `wodim` / `cdrecord` / `growisofs` / `xorriso`，开浏览器用 `xdg-open` |
+| 可选（Linux） | 刻录用 `xorriso` / `cdrskin` / `wodim` / `cdrecord` / `growisofs`，开浏览器用 `xdg-open` |
 | 磁盘 | 项目本身约 2 MB，每个人格房间几 MB（装了插件会多几 MB） |
 
 macOS 不支持。Linux 由并行的 Node.js 实现支持，光盘格式与房间布局一致；详见

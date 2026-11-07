@@ -35,6 +35,15 @@ persona room layout and all machine-readable output with the Windows side.
 - `Test-Disc` (Linux) checks `start.sh` (LF, no BOM, shebang, references `engine/launch.js`) and
   treats `autorun.inf` / `start.cmd` as optional Windows extras instead of requirements.
 
+### Fixed
+
+- `tools/burn-iso.js`: `--test-only` now really opens the drive with the writer instead of reporting
+  success without touching it. `cdrskin` is detected as a writer, and failures name the real writer
+  error (for example "Lost connection to drive") with USB port/cable/power advice instead of the last
+  "aborting" line. B06 now also covers "writer cannot open the drive".
+- Verified against a real USB DVD writer (Slimtype eBAU108): ISO generation and drive detection work;
+  burning correctly fails with B06 while the kernel reports a USB disconnect/reset loop.
+
 ### Notes
 
 - Windows behaviour is unchanged; no `.ps1`/`.cmd` file was modified.
@@ -72,6 +81,14 @@ Linux 支持：整套流水线新增并行的 Node.js 实现，与 Windows 侧�
 - `.gitattributes` 固定 `*.sh`/`*.js` 为 LF；`.editorconfig` 对 `sh`/`md` 也使用 LF。
 - Linux 的 `test-disc.js` 检查 `start.sh`（LF、无 BOM、shebang、引用 `engine/launch.js`），
   `autorun.inf` / `start.cmd` 改为可选的 Windows 附加项。
+
+### 修复
+
+- `tools/burn-iso.js`：`--test-only` 现在会真正用写入器打开设备，而不是没碰设备就报成功；新增
+  `cdrskin` 写入器探测；失败时给出写入器的真实原因（例如 "Lost connection to drive"）及 USB 口/线材/
+  供电建议，不再只报最后一行 "aborting"。B06 也覆盖「写入器打不开设备」。
+- 用真实 USB DVD 光驱（Slimtype eBAU108）验证：ISO 生成与光驱识别正常；内核持续报 USB 断连/重置时，
+  刻录会正确以 B06 失败并说明原因。
 
 ### 说明
 
