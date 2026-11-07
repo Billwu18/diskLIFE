@@ -1,14 +1,19 @@
 #!/usr/bin/env node
 /*
- * DiscPersona · disc watcher (Linux / Node.js)
+ * diskLIFE · disc watcher (Linux / Node.js)
  *
- * Insert a disc, wake the persona: polls /proc/mounts for ISO9660/UDF mounts, and when a
- * mount root carries pad.bin + persona/persona.yml it starts that disc's launcher.
+ * Linux has no Windows AutoPlay: a mounted CD cannot execute autorun.inf, and GNOME/udisks
+ * deliberately refuse to run programs from removable media. This watcher is the equivalent:
+ * it runs in the user session, notices an inserted disc, mounts it if the desktop did not,
+ * and shows an AutoPlay-style dialog ("启动 / 稍后"). No root is needed.
  *
  * Usage:
- *   node engine/tools/disc-watch.js                  # foreground, Ctrl+C to quit
+ *   node engine/tools/disc-watch.js                  # foreground, prompt on disc insert
  *   node engine/tools/disc-watch.js --install        # XDG autostart entry (~/.config/autostart)
  *   node engine/tools/disc-watch.js --uninstall      # remove that autostart entry
+ *   node engine/tools/disc-watch.js --auto           # never prompt, launch immediately
+ *   node engine/tools/disc-watch.js --notify         # try a notification with a 启动 action first
+ *   node engine/tools/disc-watch.js --no-mount       # do not auto-mount; only see desktop mounts
  *   node engine/tools/disc-watch.js --test-root build/linux-disc --dry-run
  *   node engine/tools/disc-watch.js --once --dry-run # one poll, then exit
  */
@@ -17,16 +22,19 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { spawn } = require('child_process');
+const crypto = require('crypto');
+const { spawn, spawnSync } = require('child_process');
 
 const HOME_DIR = os.homedir();
 const XDG_CONFIG_HOME = process.env.XDG_CONFIG_HOME || path.join(HOME_DIR, '.config');
 const XDG_STATE_HOME = process.env.XDG_STATE_HOME || path.join(HOME_DIR, '.local', 'state');
 const AUTOSTART_DIR = path.join(XDG_CONFIG_HOME, 'autostart');
 const AUTOSTART_FILE = path.join(AUTOSTART_DIR, 'disklife-disc-watch.desktop');
-const DEFAULT_LOG_FILE = path.join(XDG_STATE_HOME, 'disklife', 'disc-watch.log');
-const POLL_INTERVAL_MS = 3000;
-const DUPLICATE_WINDOW_MS = 15000;
+const STATE_DIR = path.join(XDG_STATE_HOME, 'disklife');
+const DEFAULT_LOG_FILE = path.join(STATE_DIR, 'disc-watch.log');
+const LOCK_FILE = path.join(STATE_DIR, 'disc-watch.pid');
+const POLL_INTERVAL_MS = 2500;
+const MOUNT_RETRY_MS = 15000;
 
 const opts = {
   install: false,
@@ -34,19 +42,24 @@ const opts = {
   dryRun: false,
   testRoot: '',
   noBrowser: false,
+  noMount: false,
   logPath: '',
   once: false,
   help: false,
+  mode: 'prompt', // prompt | auto | notify
+  homeRoot: '',
 };
 
 let logFile = '';
-let lastRoot = '';
-let lastTick = 0;
 let mountWarned = false;
 let timer = null;
+let lockHeld = false;
+const handled = new Map(); // mountpoint -> { action, id }
+const discIdCache = new Map(); // mountpoint -> discID
+const mountAttempts = new Map();
 const missingLauncherReported = new Set();
 
-// ---------------------------------------------------------------- 输出 / 日志
+// ---------------------------------------------------------------- output / log
 function timestamp() {
   const d = new Date();
   const pad2 = (n) => String(n).padStart(2, '0');
@@ -60,23 +73,31 @@ function writeLog(message, level) {
   try {
     fs.mkdirSync(path.dirname(logFile), { recursive: true });
     fs.appendFileSync(logFile, line + '\n');
-  } catch (e) { /* 日志写不进去不影响守望 */ }
+  } catch (e) { /* logging must never break the watcher */ }
 }
 
-// ---------------------------------------------------------------- 参数
+// ---------------------------------------------------------------- arguments
 function usage() {
   return [
-    'DiscPersona disc watcher (Linux)',
+    'diskLIFE disc watcher (Linux)',
+    '',
+    'Linux has no AutoPlay. Run this watcher in your session (or install the autostart entry)',
+    'and it will mount an inserted disc if needed and show a 启动 / 稍后 dialog.',
     '',
     'Usage:',
     '  node engine/tools/disc-watch.js [options]',
     '',
     'Options:',
-    '  --install             Install an XDG autostart entry (runs this script with --no-browser).',
+    '  --install             Install an XDG autostart entry (runs at the next sign-in).',
     '  --uninstall           Remove that autostart entry.',
-    '  --dry-run             Detect and log, but start nothing.',
-    '  --test-root <dir>     One-shot check of one directory; exit 0 if it looks like a disc, 1 otherwise.',
+    '  --prompt              Ask before launching (default).',
+    '  --auto                Launch without asking.',
+    '  --notify              Try a desktop notification with a 启动 action first, then fall back.',
+    '  --no-mount            Do not auto-mount media; only react to what the desktop mounts.',
+    '  --home-root <dir>     Pass a room root to the launcher (same as engine/launch.js --home-root).',
     '  --no-browser          Tell the launcher not to open a browser.',
+    '  --dry-run             Detect and log, but start nothing (never prompts).',
+    '  --test-root <dir>     One-shot check of one directory; exit 0 if it is a disc, 1 otherwise.',
     '  --log <path>          Log file (default: $XDG_STATE_HOME/disklife/disc-watch.log).',
     '  --once                Run one poll, then exit.',
     '  --help                Print this help.',
@@ -111,8 +132,12 @@ function parseArgs(argv) {
     else if (lower === '--uninstall' || lower === '-uninstall') opts.uninstall = true;
     else if (lower === '--dry-run' || lower === '-dryrun') opts.dryRun = true;
     else if (lower === '--no-browser' || lower === '-nobrowser') opts.noBrowser = true;
+    else if (lower === '--no-mount' || lower === '-nomount') opts.noMount = true;
     else if (lower === '--once' || lower === '-once') opts.once = true;
     else if (lower === '--help' || lower === '-h' || lower === '-help') opts.help = true;
+    else if (lower === '--prompt' || lower === '-prompt') opts.mode = 'prompt';
+    else if (lower === '--auto' || lower === '-auto') opts.mode = 'auto';
+    else if (lower === '--notify' || lower === '-notify') opts.mode = 'notify';
     else if (lower === '--test-root' || lower === '-testdriveroot' || lower === '-test-root') {
       const v = takeValue();
       if (v === null) return 'Missing directory for --test-root.';
@@ -121,6 +146,10 @@ function parseArgs(argv) {
       const v = takeValue();
       if (v === null) return 'Missing path for --log.';
       opts.logPath = v;
+    } else if (lower === '--home-root' || lower === '-homeroot') {
+      const v = takeValue();
+      if (v === null) return 'Missing directory for --home-root.';
+      opts.homeRoot = v;
     } else {
       return 'Unknown option: ' + raw;
     }
@@ -128,7 +157,7 @@ function parseArgs(argv) {
   return null;
 }
 
-// ---------------------------------------------------------------- 盘识别
+// ---------------------------------------------------------------- disc detection
 function isFile(p) {
   try { return fs.statSync(p).isFile(); } catch (e) { return false; }
 }
@@ -137,6 +166,19 @@ function isDiscPersonaRoot(root) {
   if (!root) return false;
   const root2 = String(root).replace(/\/+$/, '') || '/';
   return isFile(path.join(root2, 'pad.bin')) && isFile(path.join(root2, 'persona', 'persona.yml'));
+}
+
+// discID = sha256(pad.bin)[0:16]; the same disc mounted twice (e.g. loop + drive) must wake only once.
+function discIdOf(root) {
+  if (discIdCache.has(root)) return discIdCache.get(root);
+  let id = '';
+  try {
+    id = crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'pad.bin'))).digest('hex').slice(0, 16);
+  } catch (e) {
+    id = '';
+  }
+  discIdCache.set(root, id);
+  return id;
 }
 
 function decodeMountField(text) {
@@ -148,26 +190,156 @@ function readMounts() {
   try {
     text = fs.readFileSync('/proc/mounts', 'utf8');
   } catch (e) {
-    return { error: e.message, discs: [], mountpoints: new Set() };
+    return { error: e.message, discs: [], mountpoints: new Set(), byDevice: new Map() };
   }
   const discs = [];
   const mountpoints = new Set();
+  const byDevice = new Map();
   for (const line of text.split(/\r?\n/)) {
     if (!line) continue;
     const parts = line.split(' ');
     if (parts.length < 3) continue;
+    const source = decodeMountField(parts[0]);
     const mountpoint = decodeMountField(parts[1]);
     const fsType = parts[2].toLowerCase();
     mountpoints.add(mountpoint);
+    byDevice.set(source, mountpoint);
     if (fsType === 'iso9660' || fsType === 'udf') discs.push(mountpoint);
   }
-  return { error: null, discs, mountpoints };
+  return { error: null, discs, mountpoints, byDevice };
 }
 
-// ---------------------------------------------------------------- 启动
+function readSys(dev, leaf) {
+  try { return fs.readFileSync('/sys/block/' + path.basename(dev) + '/' + leaf, 'utf8').trim(); }
+  catch (e) { return ''; }
+}
+
+// Optical devices that currently hold media (size 4 sectors is the kernel's "no media" placeholder).
+function findOpticalDevices() {
+  let names = [];
+  try { names = fs.readdirSync('/sys/block').filter((n) => /^sr\d+$/.test(n)); }
+  catch (e) { return []; }
+  const devices = [];
+  for (const name of names) {
+    const dev = '/dev/' + name;
+    const size = parseInt(readSys(dev, 'size'), 10) || 0;
+    if (size > 4) devices.push({ device: dev, size: size, model: readSys(dev, 'device/model') });
+  }
+  return devices;
+}
+
+function commandExists(name) {
+  const paths = (process.env.PATH || '').split(path.delimiter);
+  for (const dir of paths) {
+    if (!dir) continue;
+    try {
+      fs.accessSync(path.join(dir, name), fs.constants.X_OK);
+      return true;
+    } catch (e) { /* keep looking */ }
+  }
+  return false;
+}
+
+// If udisks did not auto-mount the inserted disc, do it ourselves (no root needed).
+function autoMountDevices(mounts) {
+  if (opts.noMount || opts.dryRun) return false;
+  let mountedAny = false;
+  for (const item of findOpticalDevices()) {
+    if (mounts.byDevice.has(item.device)) continue;
+    const last = mountAttempts.get(item.device) || 0;
+    if (Date.now() - last < MOUNT_RETRY_MS) continue;
+    mountAttempts.set(item.device, Date.now());
+    writeLog('Mounting ' + item.device + (item.model ? ' (' + item.model + ')' : '') + ' via udisksctl…', 'mount');
+    const result = spawnSync('udisksctl', ['mount', '-b', item.device], { encoding: 'utf8', timeout: 25000 });
+    const text = ((result.stdout || '') + ' ' + (result.stderr || '')).trim();
+    if (result.status === 0) {
+      writeLog('Mounted: ' + text, 'mount');
+      mountedAny = true;
+    } else {
+      writeLog('Could not mount ' + item.device + ': ' + (text || 'udisksctl exited ' + result.status), 'warn');
+    }
+  }
+  return mountedAny;
+}
+
+function readPersonaInfo(root) {
+  const info = { name: '', version: '' };
+  try {
+    const meta = JSON.parse(fs.readFileSync(path.join(root, 'persona', 'meta.json'), 'utf8'));
+    info.name = String(meta.nameJp || meta.name || meta.personaName || '').trim();
+    info.version = String(meta.version || meta.personaVersion || '').trim();
+  } catch (e) { /* fall back to persona.yml below */ }
+  if (!info.name) {
+    try {
+      const yml = fs.readFileSync(path.join(root, 'persona', 'persona.yml'), 'utf8');
+      const m = /^name\s*:\s*(.+?)\s*$/m.exec(yml);
+      if (m) info.name = m[1].replace(/^["']|["']$/g, '').trim();
+    } catch (e) { /* ignore */ }
+  }
+  if (!info.name) info.name = 'diskLIFE persona';
+  return info;
+}
+
+// ---------------------------------------------------------------- AutoPlay-style prompt
+function graphicalSession() {
+  return Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+}
+
+function promptText(root) {
+  const info = readPersonaInfo(root);
+  const version = info.version ? ' (v' + info.version + ')' : '';
+  return '检测到 diskLIFE 光盘：' + info.name + version + '\n\n要现在唤醒这个房间吗？';
+}
+
+function tryNotification(root) {
+  if (!commandExists('notify-send')) return null;
+  const result = spawnSync('notify-send', [
+    '--app-name=diskLIFE',
+    '--icon=media-optical',
+    '--action=default=启动',
+    '--wait',
+    'diskLIFE',
+    promptText(root),
+  ], { encoding: 'utf8' });
+  if (result.error) return null;
+  if (result.status === 0 && /(^|\n)default(\n|$)/.test(result.stdout || '')) return true;
+  if (result.status === 0) return false; // notification closed without choosing 启动
+  return null; // action support missing (older libnotify) -> caller falls back to a dialog
+}
+
+function askBeforeLaunch(root) {
+  if (opts.mode === 'auto') return true;
+  if (opts.dryRun) return false;
+  if (!graphicalSession()) {
+    writeLog('No graphical session (DISPLAY/WAYLAND_DISPLAY): starting without a prompt.', 'warn');
+    return true;
+  }
+  if (opts.mode === 'notify') {
+    const answer = tryNotification(root);
+    if (answer !== null) return answer;
+    writeLog('notify-send has no action support here; falling back to a dialog.', 'warn');
+  }
+  const text = promptText(root);
+  const zenity = spawnSync('zenity', [
+    '--question',
+    '--title=diskLIFE',
+    '--text=' + text,
+    '--ok-label=启动',
+    '--cancel-label=稍后',
+    '--width=420',
+  ], { encoding: 'utf8' });
+  if (!zenity.error) return zenity.status === 0;
+  const kdialog = spawnSync('kdialog', ['--title', 'diskLIFE', '--yesno', text], { encoding: 'utf8' });
+  if (!kdialog.error) return kdialog.status === 0;
+  writeLog('No dialog tool (zenity/kdialog) found: starting automatically.', 'warn');
+  return true;
+}
+
+// ---------------------------------------------------------------- launching
 function startLauncher(root, launchScript) {
   const args = [launchScript, '--disc-root', root, '--no-wait'];
   if (opts.noBrowser) args.push('--no-browser');
+  if (opts.homeRoot) args.push('--home-root', path.resolve(opts.homeRoot));
   try {
     const fd = fs.openSync(logFile, 'a');
     let child;
@@ -191,20 +363,23 @@ function startLauncher(root, launchScript) {
   }
 }
 
-// 返回 true = 这个目录看起来是 DiscPersona 盘（--test-root 用它决定退出码）
+// Returns true when the root looks like a disc (--test-root uses this for its exit code).
 function inspectRoot(root, dryRun) {
   if (!isDiscPersonaRoot(root)) {
-    writeLog('Not a DiscPersona disc, ignoring: ' + root, 'skip');
+    writeLog('Not a diskLIFE disc, ignoring: ' + root, 'skip');
     return false;
   }
+  if (handled.has(root)) return true;
 
-  const now = Date.now();
-  if (root === lastRoot) {
-    // 同一个挂载点在轮询里会一直出现：只在这个窗口里提示一次，别刷屏
-    if (now - lastTick < DUPLICATE_WINDOW_MS) {
-      writeLog('Same disc fired twice within 15s, skipping: ' + root, 'dup');
+  const discID = discIdOf(root);
+  if (discID) {
+    for (const entry of handled.values()) {
+      if (entry.id === discID) {
+        handled.set(root, { action: 'duplicate', id: discID });
+        writeLog('Same disc is already mounted elsewhere (discID ' + discID + '); not waking it twice: ' + root, 'dup');
+        return true;
+      }
     }
-    return true;
   }
 
   const launchScript = path.join(root, 'engine', 'launch.js');
@@ -216,26 +391,29 @@ function inspectRoot(root, dryRun) {
     return false;
   }
 
-  writeLog('Disc inserted, waking up: ' + root + ' (entry: engine/launch.js)', 'wake');
+  writeLog('Disc mounted: ' + root + ' (entry: engine/launch.js)', 'wake');
 
   if (dryRun) {
-    lastRoot = root;
-    lastTick = now;
+    handled.set(root, { action: 'dry', id: discID });
     writeLog('(--dry-run: detection only, nothing is started)', 'dry-run');
     return true;
   }
 
-  if (!startLauncher(root, launchScript)) return false;
+  if (!askBeforeLaunch(root)) {
+    handled.set(root, { action: 'declined', id: discID });
+    writeLog('User chose 稍后; this disc will not prompt again until it is reinserted.', 'skip');
+    return true;
+  }
 
+  if (!startLauncher(root, launchScript)) return false;
+  handled.set(root, { action: 'launched', id: discID });
   writeLog('Launcher started (it reports the result in its own log).', 'ok');
-  lastRoot = root;
-  lastTick = Date.now();
   return true;
 }
 
-// ---------------------------------------------------------------- 轮询
+// ---------------------------------------------------------------- polling
 function tick() {
-  const mounts = readMounts();
+  let mounts = readMounts();
   if (mounts.error) {
     if (!mountWarned) {
       writeLog('Cannot read /proc/mounts (will retry): ' + mounts.error, 'warn');
@@ -245,38 +423,79 @@ function tick() {
   }
   mountWarned = false;
 
-  // 盘拔掉后清掉去重状态，重新插回来可以立刻再唤醒
-  if (lastRoot && !mounts.mountpoints.has(lastRoot)) {
-    const gone = lastRoot;
-    writeLog('Mount disappeared: ' + gone, 'event');
-    lastRoot = '';
-    lastTick = 0;
-    missingLauncherReported.delete(gone);
+  // Forget handled discs that are no longer mounted, so reinserting prompts again.
+  for (const root of Array.from(handled.keys())) {
+    if (!mounts.mountpoints.has(root)) {
+      handled.delete(root);
+      discIdCache.delete(root);
+    }
   }
+
+  if (autoMountDevices(mounts)) mounts = readMounts();
 
   for (const root of mounts.discs) {
     if (isDiscPersonaRoot(root)) inspectRoot(root, opts.dryRun);
   }
 }
 
-// ---------------------------------------------------------------- 安装
+// ---------------------------------------------------------------- single instance
+function isProcessAlive(pid) {
+  if (!pid || pid === process.pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code === 'EPERM';
+  }
+}
+
+function acquireLock() {
+  try {
+    if (fs.existsSync(LOCK_FILE)) {
+      const pid = parseInt(fs.readFileSync(LOCK_FILE, 'utf8').trim(), 10);
+      if (isProcessAlive(pid)) {
+        writeLog('Another diskLIFE watcher is already running (PID ' + pid + '); exiting.', 'warn');
+        return false;
+      }
+    }
+    fs.mkdirSync(STATE_DIR, { recursive: true });
+    fs.writeFileSync(LOCK_FILE, String(process.pid), 'utf8');
+    lockHeld = true;
+    return true;
+  } catch (e) {
+    writeLog('Cannot create the watcher lock ' + LOCK_FILE + ': ' + ((e && e.message) || String(e)), 'warn');
+    return true; // do not block the watcher just because the lock file failed
+  }
+}
+
+function releaseLock() {
+  if (!lockHeld) return;
+  lockHeld = false;
+  try {
+    const pid = parseInt(fs.readFileSync(LOCK_FILE, 'utf8').trim(), 10);
+    if (pid === process.pid) fs.unlinkSync(LOCK_FILE);
+  } catch (e) { /* ignore */ }
+}
+
+// ---------------------------------------------------------------- install / uninstall
 function desktopQuote(value) {
   return '"' + String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$') + '"';
 }
 
 function installWatcher() {
   const scriptPath = path.resolve(__filename);
-  const exec = desktopQuote(process.execPath) + ' ' + desktopQuote(scriptPath) + ' --no-browser';
+  const exec = desktopQuote(process.execPath) + ' ' + desktopQuote(scriptPath) + ' --prompt';
   const content = [
     '[Desktop Entry]',
     'Type=Application',
     'Version=1.0',
-    'Name=DiscPersona disc watcher',
-    'Comment=Wake the persona when a DiscPersona disc is mounted',
+    'Name=diskLIFE disc watcher',
+    'Comment=Mount discs and ask before waking the persona (Linux AutoPlay substitute)',
     'Exec=' + exec,
     'Terminal=false',
-    'NoDisplay=false',
+    'NoDisplay=true',
     'X-GNOME-Autostart-enabled=true',
+    'X-GNOME-Autostart-Delay=2',
     '',
   ].join('\n');
   try {
@@ -288,8 +507,9 @@ function installWatcher() {
   }
   writeLog('Installed XDG autostart entry: ' + AUTOSTART_FILE, 'install');
   writeLog('Node: ' + process.execPath, 'install');
+  writeLog('Linux has no AutoPlay: from the next sign-in the watcher runs in your session, mounts inserted discs if needed and asks 启动 / 稍后.', 'install');
   writeLog('Takes effect after the next sign-in; run this script once now if you want it immediately.', 'install');
-  writeLog('The watcher only reacts to newly mounted discs; if the desktop mounts discs itself, insert normally.', 'install');
+  writeLog('Remove it again with: node ' + scriptPath + ' --uninstall', 'install');
   return 0;
 }
 
@@ -310,7 +530,7 @@ function uninstallWatcher() {
   return 0;
 }
 
-// ---------------------------------------------------------------- 主流程
+// ---------------------------------------------------------------- main
 function main() {
   const argError = parseArgs(process.argv.slice(2));
   if (argError) {
@@ -328,38 +548,38 @@ function main() {
   if (opts.install) { process.exitCode = installWatcher(); return; }
   if (opts.uninstall) { process.exitCode = uninstallWatcher(); return; }
 
-  // --test-root 永远是 dry-run：只检查，不启动任何东西
+  // --test-root is always a dry run: check only, never start or prompt.
   if (opts.testRoot) {
     const root = path.resolve(expandHome(opts.testRoot));
     writeLog('Log: ' + logFile, 'ready');
     const looksLikeDisc = inspectRoot(root, true);
     writeLog(looksLikeDisc
-      ? 'DiscPersona disc detected: ' + root
-      : 'Not a DiscPersona disc: ' + root, looksLikeDisc ? 'ok' : 'skip');
+      ? 'diskLIFE disc detected: ' + root
+      : 'Not a diskLIFE disc: ' + root, looksLikeDisc ? 'ok' : 'skip');
     process.exitCode = looksLikeDisc ? 0 : 1;
     return;
   }
 
-  writeLog('Disc watcher started, waiting for a disc… (Ctrl+C to quit)', 'ready');
+  if (!acquireLock()) {
+    process.exitCode = 0;
+    return;
+  }
+  process.on('exit', releaseLock);
+  process.on('SIGINT', () => { releaseLock(); process.exit(0); });
+  process.on('SIGTERM', () => { releaseLock(); process.exit(0); });
+
+  writeLog('diskLIFE disc watcher started (' + opts.mode + ' mode), waiting for a disc… (Ctrl+C to quit)', 'ready');
   writeLog('Log: ' + logFile, 'ready');
 
-  tick(); // 先扫一遍：脚本启动前就已经挂好的盘也要算
+  tick(); // catch a disc that was already mounted before the watcher started
 
   if (opts.once) {
     writeLog('Done (--once).', 'ready');
+    releaseLock();
     return;
   }
 
   timer = setInterval(tick, POLL_INTERVAL_MS);
-
-  const stop = () => {
-    if (timer) clearInterval(timer);
-    timer = null;
-    writeLog('Disc watcher stopped.', 'ready');
-    process.exit(0);
-  };
-  process.on('SIGINT', stop);
-  process.on('SIGTERM', stop);
 }
 
 main();

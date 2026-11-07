@@ -20,7 +20,9 @@ persona room layout and all machine-readable output with the Windows side.
   SHA-256). Burning uses `xorriso`/`cdrskin`/`wodim`/`cdrecord`/`growisofs` and reports the same
   B01–B08 codes.
 - **Linux Studio + watcher** — `start-studio.sh` + `studio/server.js` (same web UI, same HTTP API)
-  and `engine/tools/disc-watch.js` (mount polling + XDG autostart).
+  and `engine/tools/disc-watch.js`: an AutoPlay substitute that auto-mounts via udisks2, shows a
+  启动 / 稍后 dialog (`--auto`/`--notify` modes), dedupes by discID, keeps a single-instance lock and
+  installs an XDG autostart entry.
 - **Engine self-test on Linux** — `engine/_selftest/run-tests.js` with shell stubs, 17 assertions
   matching the PowerShell suite (T1–T14).
 - **Docs and CI** — `docs/linux.md`, Linux sections in both READMEs, `engine.md`, `DISC-SPEC.md`,
@@ -78,7 +80,8 @@ Linux 支持：整套流水线新增并行的 Node.js 实现，与 Windows 侧�
   `new-profile-payload.js`。ISO 始终使用零依赖的 ISO9660 + Joliet 内置写入器，写出后回读校验；
   刻录走 `xorriso`/`cdrskin`/`wodim`/`cdrecord`/`growisofs`，错误码 B01–B08 不变。
 - **Linux Studio 与守望者** — `start-studio.sh` + `studio/server.js`（同一网页、同一 API）、
-  `engine/tools/disc-watch.js`（轮询挂载点 + XDG autostart）。
+  `engine/tools/disc-watch.js`：AutoPlay 等价物，自动用 udisks2 挂载、弹「启动 / 稍后」（`--auto`/
+  `--notify` 模式）、按 discID 去重、单实例锁、XDG autostart。
 - **Linux 引擎自测** — `engine/_selftest/run-tests.js`，用 shell stub 覆盖与 PowerShell 套件相同的
   17 项断言（T1–T14）。
 - **文档与 CI** — 新增 `docs/linux.md`，两份 README、`engine.md`、`DISC-SPEC.md`、`studio.md`、

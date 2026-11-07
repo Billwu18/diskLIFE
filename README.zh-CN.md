@@ -232,6 +232,7 @@ Windows 仍会问一次（AutoPlay「选择要执行的操作」），这是光�
 `autorun.inf` 负责提供提示文案和命令。想要零点击就装守望者：
 `engine\tools\disc-watch.ps1 -Install`。用计划任务绕过 AutoPlay 不在范围内（那和恶意软件的行为没区别）。
 Linux 没有 AutoPlay：直接 `bash start.sh`，或装守望者 `node engine/tools/disc-watch.js --install`
+（在用户会话里常驻，插盘自动挂载并弹「启动 / 稍后」；`--auto` 则插入即启动）
 （前提是桌面/udisks 已经把盘自动挂载）。
 
 **不重刻盘能换人设吗？**

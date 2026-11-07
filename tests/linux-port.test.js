@@ -142,6 +142,26 @@ test('burn-iso lists drives and fails cleanly without a writer/drive', () => {
   assert.match(output(missing), /BURN_FAIL B0[15] /);
 });
 
+test('disc-watch installs a prompt-mode autostart entry and removes it', () => {
+  const xdg = path.join(tmpRoot, 'watch-xdg');
+  const env = {
+    XDG_CONFIG_HOME: path.join(xdg, 'config'),
+    XDG_STATE_HOME: path.join(xdg, 'state'),
+  };
+  const desktop = path.join(xdg, 'config', 'autostart', 'disklife-disc-watch.desktop');
+
+  const install = run('engine/tools/disc-watch.js', ['--install'], { env });
+  assert.equal(install.status, 0, output(install));
+  const text = fs.readFileSync(desktop, 'utf8');
+  assert.match(text, /^\[Desktop Entry\]/m);
+  assert.match(text, /--prompt/);
+  assert.match(text, /^X-GNOME-Autostart-enabled=true$/m);
+
+  const remove = run('engine/tools/disc-watch.js', ['--uninstall'], { env });
+  assert.equal(remove.status, 0, output(remove));
+  assert.ok(!fs.existsSync(desktop));
+});
+
 test('disc-watch detects a disc tree and rejects a plain directory', () => {
   const hit = run('engine/tools/disc-watch.js', ['--test-root', discDir, '--dry-run', '--once']);
   assert.equal(hit.status, 0, 'watcher should recognise the disc:\n' + output(hit));

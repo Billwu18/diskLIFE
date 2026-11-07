@@ -266,7 +266,8 @@ media. `autorun.inf` supplies the prompt text and the command. For a zero-click 
 the optional watcher: `engine\tools\disc-watch.ps1 -Install`. Bypassing AutoPlay with a scheduled task
 is out of scope (and would be indistinguishable from malware behaviour).
 Linux has no AutoPlay at all; run `bash start.sh` from the mounted disc, or install the optional
-watcher: `node engine/tools/disc-watch.js --install`.
+watcher: `node engine/tools/disc-watch.js --install`. The watcher runs in your user session, mounts the
+disc if needed, and shows a 启动 / 稍后 dialog (or `--auto` to launch immediately).
 
 **Can I change the persona without burning a new disc?**
 Yes. The pack is copied into the room on first boot — edit `<room>\persona\persona.yml` and restart.

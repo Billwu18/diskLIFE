@@ -16,7 +16,7 @@
 | 生成 ISO（ISO 9660 + Joliet） | `tools/new-iso.js` | 内置写入器，无需任何第三方工具 |
 | 刻录 CD-R | `tools/burn-iso.js` | 可选：`wodim` / `cdrecord` / `cdrskin` / `growisofs` / `xorriso` |
 | Studio（本地网页工作台） | `start-studio.sh` → `studio/server.js` | Node.js + 浏览器 |
-| 插盘守望者（可选） | `engine/tools/disc-watch.js` | Node.js；需要系统自动挂载光盘 |
+| 插盘守望者（可选） | `engine/tools/disc-watch.js` | Node.js；用 udisks2 自动挂载，无需 root |
 | 插件载荷重建 | `tools/new-profile-payload.js` | Node.js + 已登录的 dsh + 网络（仅重建时） |
 
 刻录与守望者是可选能力：**没有光驱也能完整使用**（挂载 ISO 或直接对目录启动）。
@@ -192,27 +192,45 @@ node tools/test-disc.js --disc /media/$USER/<盘名>
 
 ---
 
-## 8. 插盘守望者（可选）
+## 8. 插盘守望者：Linux 上的 AutoPlay 等价物（可选）
+
+Linux **没有** Windows 那种 AutoPlay：光盘上的 `autorun.inf` 不会被读取，GNOME/udisks 也刻意不允许从
+可移动介质直接执行程序（安全设计）。要接近「插入光盘 → 弹窗 → 启动」，需要一个常驻在**用户会话**里的小
+程序；本仓库自带 `engine/tools/disc-watch.js`，不需要 root：
 
 ```sh
-# 当前终端前台运行，看它是否识别到盘
+# 前台运行，插盘时弹「启动 / 稍后」
 node engine/tools/disc-watch.js
 
-# 只检测某个目录像不像一张 diskLIFE 盘，不启动
-node engine/tools/disc-watch.js --test-root build/linux-disc --dry-run
-
-# 安装为登录自启（XDG autostart，不需要 root）
+# 登录自启（XDG autostart）；之后每次插入 diskLIFE 盘都会弹窗
 node engine/tools/disc-watch.js --install
 node engine/tools/disc-watch.js --uninstall
+
+# 不弹窗，插入即启动
+node engine/tools/disc-watch.js --auto
+# 先发桌面通知（带「启动」按钮），不支持时退回弹窗
+node engine/tools/disc-watch.js --notify
+# 不自动挂载，只响应桌面已经挂好的盘
+node engine/tools/disc-watch.js --no-mount
+
+# 只检测目录，不启动/prompt
+node engine/tools/disc-watch.js --test-root build/linux-disc --dry-run
 ```
 
-行为：每 3 秒扫 `/proc/mounts` 里的 `iso9660`/`udf` 挂载点，发现根目录同时有 `pad.bin` 与
-`persona/persona.yml` 就以 `--no-wait` 拉起启动器；同一挂载点只触发一次（卸载后清除状态，重新插盘会再次触发）。日志写到
-`${XDG_STATE_HOME:-~/.local/state}/disklife/disc-watch.log`。
+行为：
 
-前提：桌面/udisks 已经把盘**自动挂载**了。如果系统不自动挂载，先手动 `udisksctl mount -b /dev/sr0`，
-或者直接 `bash /media/.../start.sh`。Linux 没有 AutoPlay，守望者是零点击的唯一途径；它不是系统服务，
-不会绕过挂载策略。
+- 每 2.5 秒扫 `/proc/mounts`；如果盘还没有被桌面挂载，会用 `udisksctl mount -b /dev/srN` 自动挂载
+  （无 root；失败会写日志，不影响桌面自己的挂载）。
+- 识别依据是盘根同时有 `pad.bin` 与 `persona/persona.yml`；从 `persona/meta.json` 取人设名，弹窗文案形如
+  「检测到 diskLIFE 光盘：蓝色大肥鱼 (v1.0.0) — 启动 / 稍后」。
+- 选「启动」→ 以 `--no-wait` 拉起 `engine/launch.js` 并打开浏览器；选「稍后」→ 本次不再询问，拔出重插会再问。
+- 同一张盘被挂载两次（例如 loop + 光驱）只会唤醒一次：按 `discID = sha256(pad.bin)[0:16]` 去重。
+- 单实例锁 `${XDG_STATE_HOME:-~/.local/state}/disklife/disc-watch.pid`，登录自启和手动启动不会起两份。
+- 日志：`${XDG_STATE_HOME:-~/.local/state}/disklife/disc-watch.log`。
+
+> 更「零常驻」的方案是 udev 规则 + systemd 用户单元，在设备插入事件里触发；这需要一次性 root 安装，
+> 而且不同发行版的 systemd/udev 组合行为有差异，本仓库不自动安装。日常使用 `--install` 的登录自启已经足够。
+> Linux 没有 AutoPlay 是系统安全策略，不是本项目的缺失；守望者不会绕过挂载策略，也不会以 root 运行。
 
 ---
 
