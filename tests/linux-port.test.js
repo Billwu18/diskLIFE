@@ -111,6 +111,26 @@ test('a sealed disc builds, verifies and launches with its passphrase', () => {
   assert.equal(verify.status, 0, output(verify));
   assert.match(verify.stdout, /PASS/);
 
+  const credHome = path.join(tmpRoot, 'seal-source-home');
+  fs.mkdirSync(credHome, { recursive: true });
+  fs.writeFileSync(path.join(credHome, '.credentials.yaml'), [
+    'version: 1',
+    'records:',
+    '  deepseek-account-platform/device:',
+    '    kind: grant',
+    '    payload:',
+    '      id: 00000000-0000-4000-8000-000000000000',
+    '  deepseek-account-platform/default:',
+    '    kind: grant',
+    '    payload:',
+    '      version: 1',
+    '      token: test-only-token',
+    'refs:',
+    '  DEEPSEEK_API_KEY: sk-test-only-not-real',
+    '',
+  ].join('\n'));
+  fs.chmodSync(path.join(credHome, '.credentials.yaml'), 0o600);
+
   const home = path.join(tmpRoot, 'sealed-home');
   const launch = spawnSync(NODE, [
     path.join(REPO, 'engine', 'launch.js'),
@@ -118,7 +138,8 @@ test('a sealed disc builds, verifies and launches with its passphrase', () => {
     '--dsh-path', path.join(REPO, 'engine', '_selftest', 'stub-dsh.sh'),
     '--home-root', home,
     '--no-browser', '--no-wait', '--passphrase-stdin', '--start-timeout-sec', '20',
-  ], { cwd: REPO, encoding: 'utf8', input: pass + '\n', timeout: 90000 });
+  ], { cwd: REPO, encoding: 'utf8', input: pass + '\n', timeout: 90000,
+       env: { ...process.env, DISCPERSONA_SOURCE_HOME: credHome } });
   assert.equal(launch.status, 0, output(launch));
   const room = fs.readdirSync(home).map((name) => path.join(home, name))[0];
   assert.ok(fs.existsSync(path.join(room, 'persona', 'persona.yml')), 'room gets the decrypted persona');
@@ -134,7 +155,8 @@ test('a sealed disc builds, verifies and launches with its passphrase', () => {
     '--dsh-path', path.join(REPO, 'engine', '_selftest', 'stub-dsh.sh'),
     '--home-root', badHome,
     '--no-browser', '--no-wait', '--passphrase-stdin',
-  ], { cwd: REPO, encoding: 'utf8', input: 'wrong-passphrase\n', timeout: 60000 });
+  ], { cwd: REPO, encoding: 'utf8', input: 'wrong-passphrase\n', timeout: 60000,
+       env: { ...process.env, DISCPERSONA_SOURCE_HOME: credHome } });
   assert.equal(bad.status, 1);
   assert.match(output(bad), /E12/);
 });
