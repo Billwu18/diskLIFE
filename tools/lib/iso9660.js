@@ -444,6 +444,23 @@ function asciiField(buffer, offset, length, text) {
     buffer.write(safe, offset, 'ascii');
 }
 
+// Joliet fields are UCS-2 big-endian; unused bytes are padded with UCS-2 spaces (0x00 0x20).
+function ucs2Field(buffer, offset, length, text) {
+    for (let i = 0; i < length; i += 2) {
+        buffer[offset + i] = 0x00;
+        buffer[offset + i + 1] = 0x20;
+    }
+    if (!text) return;
+    const maxChars = Math.floor(length / 2);
+    const chars = String(text).slice(0, maxChars);
+    for (let i = 0; i < chars.length; i += 1) {
+        const code = chars.charCodeAt(i);
+        if (code < 0x20) continue;
+        buffer[offset + i * 2] = (code >> 8) & 0xff;
+        buffer[offset + i * 2 + 1] = code & 0xff;
+    }
+}
+
 function sanitizeVolumeId(label) {
     let text = String(label || '').trim();
     if (!/^[\x20-\x7E]+$/.test(text)) text = 'DISCPERSONA';
@@ -459,8 +476,10 @@ function buildDescriptor(type, root, layout, volumeId, date, joliet) {
     buffer.write('CD001', 1, 'ascii');
     buffer[6] = 1;
     buffer[7] = 0;
-    asciiField(buffer, 8, 32, '');
-    asciiField(buffer, 40, 32, volumeId);
+    const textField = joliet ? ucs2Field : asciiField;
+    textField(buffer, 8, 32, '');
+    // Joliet volume identifiers are UCS-2BE and hold at most 16 characters (32 bytes).
+    textField(buffer, 40, 32, volumeId);
     writeBoth32(buffer, 80, layout.totalSectors);
     if (joliet) {
         // Escape sequence for Joliet level 3: "%/E"
@@ -481,13 +500,13 @@ function buildDescriptor(type, root, layout, volumeId, date, joliet) {
     const rootSize = joliet ? root.jolietSize : root.isoSize;
     const rootRecord = makeRecord(Buffer.from([0]), true, rootExtent, rootSize, date);
     rootRecord.copy(buffer, 156);
-    asciiField(buffer, 190, 128, '');
-    asciiField(buffer, 318, 128, '');
-    asciiField(buffer, 446, 128, '');
-    asciiField(buffer, 574, 128, 'DISKPERSONA');
-    asciiField(buffer, 702, 37, '');
-    asciiField(buffer, 739, 37, '');
-    asciiField(buffer, 776, 37, '');
+    textField(buffer, 190, 128, '');
+    textField(buffer, 318, 128, '');
+    textField(buffer, 446, 128, '');
+    textField(buffer, 574, 128, 'DISCPERSONA');
+    textField(buffer, 702, 37, '');
+    textField(buffer, 739, 37, '');
+    textField(buffer, 776, 37, '');
     writeDate17(buffer, 813, date);
     writeDate17(buffer, 830, date);
     writeZeroDate17(buffer, 847);

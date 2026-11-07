@@ -13,7 +13,7 @@
 | 光盘启动器（E01–E10） | `start.sh` → `engine/launch.js` | Node.js ≥ 18（dsh 本身就需要） |
 | 打包光盘目录 | `tools/new-disc.js` | Node.js |
 | 静态校验 | `tools/test-disc.js` | Node.js |
-| 生成 ISO（ISO 9660 + Joliet） | `tools/new-iso.js` | 内置写入器；有 `xorriso`/`genisoimage`/`mkisofs` 时自动优先使用 |
+| 生成 ISO（ISO 9660 + Joliet） | `tools/new-iso.js` | 内置写入器，无需任何第三方工具 |
 | 刻录 CD-R | `tools/burn-iso.js` | 可选：`wodim` / `cdrecord` / `cdrskin` / `growisofs` / `xorriso` |
 | Studio（本地网页工作台） | `start-studio.sh` → `studio/server.js` | Node.js + 浏览器 |
 | 插盘守望者（可选） | `engine/tools/disc-watch.js` | Node.js；需要系统自动挂载光盘 |
@@ -164,9 +164,9 @@ node tools/new-iso.js --source build/linux-disc --out build/linux-disc.iso
 node tools/new-iso.js --source build/linux-disc --out build/disc.iso --volume-label ARIS --force
 ```
 
-没有安装 `xorriso`/`genisoimage`/`mkisofs` 时用内置写入器（纯 JS，无需 root、无需第三方工具）。
+始终使用内置的纯 JS 写入器：无需 root、无需第三方工具，写入后逐文件回读校验（Joliet 名称 + SHA-256）。
 内置写入器不写 Rock Ridge，因此 ISO 里没有 Unix 权限位；这不影响使用（用 `bash start.sh` 启动）。
-若系统有 `xorriso`，会自动改用它并带 `-R -J`，此时可执行位一般会保留。
+（`xorriso`/`genisoimage` 不会被用于生成 ISO，因为它们会额外写入 Rock Ridge 条目，改变盘上树形与自校验基准。）
 
 刻录（可选；没有光驱/工具时会给明确的 `BURN_FAIL`）：
 
@@ -237,8 +237,8 @@ node engine/tools/disc-watch.js --uninstall
 | 启动器 | PowerShell 5.1 | Node.js（`engine/launch.js`） |
 | 房间兜底 | `%LOCALAPPDATA%\DiscPersona\personas` | `${XDG_DATA_HOME:-~/.local/share}/DiscPersona/personas` |
 | 光驱列表 | IMAPI2 / WMI | `/dev/sr*` + `/sys` |
-| 刻录 | IMAPI2 | `wodim`/`cdrecord`/`growisofs`/`xorriso`（可选） |
-| ISO | IMAPI2（ISO9660 + Joliet） | 内置 ISO9660 + Joliet（可选 xorriso） |
+| 刻录 | IMAPI2 | `xorriso`/`cdrskin`/`wodim`/`cdrecord`/`growisofs`（可选） |
+| ISO | IMAPI2（ISO9660 + Joliet） | 内置 ISO9660 + Joliet 写入器（始终使用） |
 | 守望者 | WMI 卷事件 + 启动项 | `/proc/mounts` 轮询 + XDG autostart |
 | 浏览器 | 默认浏览器 | `xdg-open` |
 | 错误码 | E01–E10 / B01–B08 / I01–I04 / PL00–PL05 | 相同 |
@@ -280,7 +280,7 @@ CI 在 `ubuntu-latest` 上跑同一组命令（见 `.github/workflows/checks.yml
 | `E08` | `persona.yml` 里没有 `system_prompt: |` 块，或文件不是 UTF-8。 |
 | `E09` | 60 秒内没等到就绪 URL；看 `logs/stdout-*.log` 最后 15 行。 |
 | `E10` | 这个房间已经有一个实例在跑（退出码 0，会打开已有地址）。 |
-| `ISO_FAIL I05` | 写出的 ISO 回读校验不匹配；重试或改用 `xorriso`。 |
+| `ISO_FAIL I05` | 写出的 ISO 回读校验不匹配；删掉旧 ISO 后重试（`--force`），仍失败请附上输出反馈。 |
 | `BURN_FAIL B06` | 没装写入工具（装 `cdrtools`/`cdrskin`/`xorriso`），或写入器打不开设备（USB 掉线/供电不足/权限）。先看 `journalctl -k \| tail -30` 有没有反复 `USB disconnect` / `reset`；换 USB 口（优先后置口、别用 hub）、换线、用双头供电线。 |
 | 插盘没反应 | 盘没有被自动挂载，或挂载点不满足 `pad.bin` + `persona/persona.yml`；先手动挂载再试。 |
 | `bash start.sh` 正常但双击不行 | 介质被挂成 `noexec`（常见于 udisks 默认策略）；用 `bash` 启动，或挂载时加 `exec`。 |

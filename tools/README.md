@@ -183,7 +183,7 @@ node tools/new-disc.js --persona examples/sample-persona --out build/linux-disc 
 # 2) verify it (required files, manifest shape + hashes, pad.bin, start.sh, autorun when present)
 node tools/test-disc.js --disc build/linux-disc
 
-# 3) ISO 9660 + Joliet; works with no external tools (built-in writer), and verifies the image after writing
+# 3) ISO 9660 + Joliet; built-in writer, no external tools, verifies the image after writing
 node tools/new-iso.js --source build/linux-disc --out build/linux-disc.iso
 node tools/new-iso.js --source build/linux-disc --out build/disc.iso --volume-label ARIS --force
 
@@ -201,7 +201,7 @@ Differences from the PowerShell side:
 
 | | Windows | Linux |
 | --- | --- | --- |
-| ISO writer | IMAPI2 | built-in ISO9660 + Joliet writer; uses `xorriso`/`genisoimage`/`mkisofs` when present |
+| ISO writer | IMAPI2 | built-in pure-JS ISO9660 + Joliet writer (no external tools) |
 | Burner | IMAPI2 | `xorriso` / `cdrskin` / `wodim` / `cdrecord` / `growisofs` |
 | Drive selector | `-DriveLetter F` | `--drive /dev/sr0` (or bare `sr0`) |
 | Executable bits on the disc | n/a | Joliet does not store them; start with `bash start.sh` |

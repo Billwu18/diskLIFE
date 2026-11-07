@@ -114,6 +114,19 @@ test('new-iso writes a verifiable ISO9660 + Joliet image', () => {
   assert.equal(svd.subarray(1, 6).toString('ascii'), 'CD001');
   assert.equal(svd.subarray(88, 91).toString('ascii'), '%/E', 'Joliet escape sequence');
   assert.equal(sector(18)[0], 255, 'volume descriptor set terminator');
+
+  // Joliet text fields are UCS-2BE (a plain ASCII label would mount as mojibake).
+  function ucs2be(buf, start, length) {
+    let text = '';
+    for (let i = start; i < start + length; i += 2) {
+      const code = (buf[i] << 8) | buf[i + 1];
+      if (code) text += String.fromCharCode(code);
+    }
+    return text.replace(/\s+$/, '');
+  }
+  assert.equal(ucs2be(svd, 40, 32), 'DISCPERSONA', 'Joliet volume id must be UCS-2BE');
+  assert.equal(ucs2be(svd, 574, 128), 'DISCPERSONA', 'Joliet application id must be UCS-2BE');
+  assert.equal(pvd.subarray(40, 72).toString('ascii').trim(), 'DISCPERSONA', 'primary volume id');
 });
 
 test('burn-iso lists drives and fails cleanly without a writer/drive', () => {
