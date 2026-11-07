@@ -23,7 +23,8 @@ Usage:
 Options:
   --source <dir>          Disc tree (the --out of new-disc.js)
   --out <file.iso>        Output ISO; default: build/<disc-dir-name>.iso
-  --volume-label <label>  Volume label; default from persona/meta.json, else DISCPERSONA
+  --volume-label <label>  Volume label (Joliet/Unicode, max 16 chars; default: persona name)
+                          The primary descriptor gets an ASCII fallback (DISCPERSONA).
   --force                 Overwrite an existing ISO
   --help                  Show this help
 

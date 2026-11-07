@@ -164,6 +164,10 @@ node tools/new-iso.js --source build/linux-disc --out build/linux-disc.iso
 node tools/new-iso.js --source build/linux-disc --out build/disc.iso --volume-label ARIS --force
 ```
 
+卷标规则：Joliet 卷描述用 UCS-2BE，支持中文等 Unicode（最多 16 个字符，默认取 `persona/meta.json` 的
+`nameJp` / `name`）；ISO 9660 主卷描述只能是 ASCII，会自动回退成 `DISCPERSONA`。桌面环境（GNOME/udisks）
+读的是 Joliet 卷标，所以中文人设名会原样显示。
+
 始终使用内置的纯 JS 写入器：无需 root、无需第三方工具，写入后逐文件回读校验（Joliet 名称 + SHA-256）。
 内置写入器不写 Rock Ridge，因此 ISO 里没有 Unix 权限位；这不影响使用（用 `bash start.sh` 启动）。
 （`xorriso`/`genisoimage` 不会被用于生成 ISO，因为它们会额外写入 Rock Ridge 条目，改变盘上树形与自校验基准。）

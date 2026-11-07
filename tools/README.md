@@ -186,6 +186,8 @@ node tools/test-disc.js --disc build/linux-disc
 # 3) ISO 9660 + Joliet; built-in writer, no external tools, verifies the image after writing
 node tools/new-iso.js --source build/linux-disc --out build/linux-disc.iso
 node tools/new-iso.js --source build/linux-disc --out build/disc.iso --volume-label ARIS --force
+# Volume label: Joliet UCS-2BE (Unicode, max 16 chars, default = persona name);
+# the ISO 9660 primary descriptor gets an ASCII fallback (DISCPERSONA).
 
 # 4) burn (optional; needs xorriso/cdrskin/wodim/cdrecord/growisofs and a real drive)
 node tools/burn-iso.js --list-drives

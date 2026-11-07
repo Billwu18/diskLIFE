@@ -461,13 +461,29 @@ function ucs2Field(buffer, offset, length, text) {
     }
 }
 
+// Joliet volume id: Unicode (UCS-2) up to 16 characters; PVD gets an ASCII fallback below.
 function sanitizeVolumeId(label) {
-    let text = String(label || '').trim();
-    if (!/^[\x20-\x7E]+$/.test(text)) text = 'DISCPERSONA';
+    let text = String(label === undefined || label === null ? '' : label)
+        .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
     if (!text) text = 'DISCPERSONA';
-    text = text.toUpperCase();
-    if (text.length > 32) text = text.slice(0, 32);
-    return text;
+    return text.slice(0, 16);
+}
+
+// Primary volume id (ISO 9660 d-characters): ASCII uppercase, non-ASCII collapses to DISCPERSONA.
+function asciiVolumeId(label) {
+    let text = String(label === undefined || label === null ? '' : label).toUpperCase();
+    text = text.replace(/[^A-Z0-9_ ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!text) text = 'DISCPERSONA';
+    return text.slice(0, 32);
+}
+
+function decodeUcs2Field(buffer, offset, length) {
+    let text = '';
+    const end = offset + length - (length % 2);
+    for (let i = offset; i < end; i += 2) text += String.fromCharCode((buffer[i] << 8) | buffer[i + 1]);
+    return text.replace(/[\u0020]+$/, '');
 }
 
 function buildDescriptor(type, root, layout, volumeId, date, joliet) {
@@ -606,7 +622,8 @@ function writeIso(sourceRoot, outPath, options) {
     const opts = options || {};
     const warn = typeof opts.warn === 'function' ? opts.warn : function () {};
     const date = opts.date instanceof Date ? opts.date : new Date();
-    const volumeId = sanitizeVolumeId(opts.volumeLabel);
+    const jolietVolumeId = sanitizeVolumeId(opts.volumeLabel);
+    const primaryVolumeId = asciiVolumeId(opts.volumeLabel);
 
     const root = collectSource(sourceRoot, warn);
     assignNames(root);
@@ -623,8 +640,8 @@ function writeIso(sourceRoot, outPath, options) {
         fs.ftruncateSync(fd, totalBytes);
         const descriptorDate = date;
 
-        writeBufferAt(fd, buildDescriptor(1, root, layout, volumeId, descriptorDate, false), 16 * SECTOR);
-        writeBufferAt(fd, buildDescriptor(2, root, layout, volumeId, descriptorDate, true), 17 * SECTOR);
+        writeBufferAt(fd, buildDescriptor(1, root, layout, primaryVolumeId, descriptorDate, false), 16 * SECTOR);
+        writeBufferAt(fd, buildDescriptor(2, root, layout, jolietVolumeId, descriptorDate, true), 17 * SECTOR);
         writeBufferAt(fd, buildTerminator(), 18 * SECTOR);
 
         writeBufferAt(fd, isoLpt, layout.isoPathTable.lpt * SECTOR);
@@ -650,7 +667,8 @@ function writeIso(sourceRoot, outPath, options) {
         totalBytes: layout.totalSectors * SECTOR,
         fileCount: layout.files.length,
         dirCount: layout.dirs.length,
-        volumeLabel: volumeId
+        volumeLabel: jolietVolumeId,
+        primaryVolumeLabel: primaryVolumeId
     };
 }
 
@@ -789,10 +807,12 @@ function verifyIso(imagePath, sourceRoot, expectedVolumeLabel) {
     }
 
     const pvdLabel = image.toString('ascii', pvd + 40, pvd + 72).replace(/[ ]+$/, '');
+    const svdLabel = svd !== null ? decodeUcs2Field(image, svd + 40, 32) : null;
+    const actualLabel = svdLabel !== null && svdLabel !== '' ? svdLabel : pvdLabel;
     if (expectedVolumeLabel) {
         const expected = sanitizeVolumeId(expectedVolumeLabel);
-        if (pvdLabel !== expected) {
-            errors.push('volume label mismatch: image="' + pvdLabel + '" expected="' + expected + '"');
+        if (actualLabel !== expected) {
+            errors.push('volume label mismatch: image="' + actualLabel + '" expected="' + expected + '"');
         }
     }
 
@@ -879,7 +899,8 @@ function verifyIso(imagePath, sourceRoot, expectedVolumeLabel) {
         ok: errors.length === 0,
         errors: errors,
         warnings: warnings,
-        volumeLabel: pvdLabel,
+        volumeLabel: actualLabel,
+        primaryVolumeLabel: pvdLabel,
         fileCount: tree.files.length,
         dirCount: tree.dirs.length,
         joliet: useJoliet,

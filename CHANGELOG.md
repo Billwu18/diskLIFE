@@ -41,7 +41,9 @@ persona room layout and all machine-readable output with the Windows side.
   `xorriso`/`genisoimage` fast path was removed because its Rock Ridge entries changed the on-disc
   tree and failed the built-in verifier; the built-in image was verified by mounting and by a real burn.
 - Joliet volume descriptor strings (volume id, application id) are now written as UCS-2BE, so a
-  burned disc mounts with the label `DISCPERSONA` instead of a mojibake directory name.
+  burned disc mounts with a readable label instead of a mojibake directory name. The Joliet label
+  accepts Unicode (up to 16 chars, default = the persona's name); the ISO 9660 primary descriptor
+  gets an ASCII fallback (`DISCPERSONA`). Verified by loop-mounting the ISO (`/run/media/.../蓝色大肥鱼`).
 - `tools/burn-iso.js`: `--test-only` now really opens the drive with the writer instead of reporting
   success without touching it. `cdrskin` is detected as a writer, and failures name the real writer
   error (for example "Lost connection to drive") with USB port/cable/power advice instead of the last
@@ -91,7 +93,9 @@ Linux 支持：整套流水线新增并行的 Node.js 实现，与 Windows 侧�
 
 - `tools/new-iso.js`：ISO 只走内置的 ISO9660 + Joliet 写入器。外部 `xorriso`/`genisoimage` 快速路径已移除
   （它写入的 Rock Ridge 条目会改变盘上树形并让内置校验失败）；内置镜像已用挂载与真实刻录验证。
-- Joliet 卷描述字符串（卷标、应用 ID）改为 UCS-2BE，烧出的盘挂载后卷标是 `DISCPERSONA`，不再乱码。
+- Joliet 卷描述字符串（卷标、应用 ID）改为 UCS-2BE，烧出的盘挂载后卷标可读、不再乱码；Joliet 卷标
+  支持中文等 Unicode（最多 16 字，默认取人设名），ISO 9660 主卷描述用 ASCII 回退（`DISCPERSONA`）。
+  已用 loop 挂载验证（`/run/media/.../蓝色大肥鱼`）。
 - `tools/burn-iso.js`：`--test-only` 现在会真正用写入器打开设备，而不是没碰设备就报成功；新增
   `cdrskin` 写入器探测；失败时给出写入器的真实原因（例如 "Lost connection to drive"）及 USB 口/线材/
   供电建议，不再只报最后一行 "aborting"。B06 也覆盖「写入器打不开设备」。
