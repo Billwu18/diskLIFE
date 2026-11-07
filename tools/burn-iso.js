@@ -124,6 +124,14 @@ function isBlockDevice(device) {
     }
 }
 
+// Only ever write to an optical device. A typo such as --drive /dev/nvme0n1 must never be treated
+// as a burner target (the kernel/udisks may deny it, but the guard is what makes that reliable).
+function isOpticalDevice(device) {
+    let resolved = device;
+    try { resolved = fs.realpathSync(device); } catch (error) { /* keep the given path */ }
+    return /^(sr\d+|cdrom\d*|dvd\d*|dvdrw\d*|cdwriter\d*)$/.test(path.basename(resolved));
+}
+
 function findDrives() {
     let names = [];
     try {
@@ -319,6 +327,10 @@ function main() {
     if (!device || !isBlockDevice(device)) {
         failBurn('B01', 'Drive not found: ' + (device || opts.drive),
             'Run --list-drives to see the optical drives on this machine.');
+    }
+    if (!isOpticalDevice(device)) {
+        failBurn('B01', 'Refusing to write to a non-optical device: ' + device,
+            'Use an optical drive such as /dev/sr0 (run --list-drives to list them).');
     }
 
     const tools = writerTools();

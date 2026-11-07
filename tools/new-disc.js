@@ -273,6 +273,10 @@ function buildDisc(personaArg, outArg, opts) {
     if (outPath === path.parse(outPath).root) {
         fatal('Refusing to write the disc tree to a filesystem root: ' + outPath);
     }
+    if (outPath === workspaceRoot || common.isStrictSubPath(outPath, workspaceRoot)) {
+        fatal('Refusing to build into the project folder or one of its parents: ' + outPath +
+            '\nUse a subdirectory such as build/<name> (the build replaces its output directory only).');
+    }
     if (outPath === personaPath) {
         fatal('The output directory cannot be the persona pack directory.');
     }
@@ -309,6 +313,21 @@ function buildDisc(personaArg, outArg, opts) {
 
     const tmpPath = outPath + '.tmp';
     if (common.exists(tmpPath)) {
+        // Only clean a directory that is clearly our own leftover build; never delete unrelated user data.
+        let looksLikeLeftover = false;
+        if (common.isDirectory(tmpPath)) {
+            try {
+                const entries = fs.readdirSync(tmpPath);
+                looksLikeLeftover = entries.length === 0 || entries.includes('pad.bin') ||
+                    common.isFile(path.join(tmpPath, '.discpersona', 'manifest.json'));
+            } catch (error) {
+                looksLikeLeftover = false;
+            }
+        }
+        if (!looksLikeLeftover) {
+            fatal('Refusing to delete ' + tmpPath + ': it exists but does not look like a leftover disc build.' +
+                ' Move or remove it yourself, then retry.');
+        }
         warnings.push('Found a leftover temp directory from a previous run; cleaned up: ' + tmpPath);
         out.warn(warnings[warnings.length - 1]);
         common.removeTree(tmpPath);

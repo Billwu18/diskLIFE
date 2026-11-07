@@ -58,6 +58,10 @@ persona room layout and all machine-readable output with the Windows side.
   signed in through the DSH web UI can now be a credential source (previously E07); only DeepSeek refs
   are copied (0600). The watcher prefers the repo launcher over the copy frozen on an older disc
   (`--disc-engine` forces the disc copy).
+- Safety guards found during the release review: `new-disc.js` refuses an output path that is the
+  project folder or one of its parents, and refuses to delete an unrelated `<out>.tmp` directory;
+  `burn-iso.js` refuses any block device that is not an optical drive (`/dev/sr*`, `/dev/cdrom`, ...),
+  so a typo can never target the system disk. `engine/version.txt` records `0.3.0`.
 - `tools/burn-iso.js`: `--test-only` now really opens the drive with the writer instead of reporting
   success without touching it. `cdrskin` is detected as a writer, and failures name the real writer
   error (for example "Lost connection to drive") with USB port/cable/power advice instead of the last
@@ -114,6 +118,9 @@ Linux 支持：整套流水线新增并行的 Node.js 实现，与 Windows 侧�
 
 ### 修复
 
+- 发布前健壮性检查补的安全闸：`new-disc.js` 拒绝把项目目录或其父目录当作输出（也不会删除无关的
+  `<out>.tmp`）；`burn-iso.js` 拒绝任何非光驱块设备（`/dev/sr*`、`/dev/cdrom` 等），写错设备也不会碰系统盘。
+  `engine/version.txt` 记录 `0.3.0`。
 - Linux 凭据：除 `deepseek-account-platform/*` 外，也接受浏览器会话登录形态
   （`client-connection/browser-session` + `DEEPSEEK_API_KEY`/`DEEPSEEK_PLATFORM_TOKEN`）；只复制
   DeepSeek 相关 refs，文件 0600。用早期版本烧的盘可由守望者用仓库里的新启动器启动（`--disc-engine`

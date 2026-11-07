@@ -79,6 +79,31 @@ test('new-disc builds a disc tree with start.sh and the Linux engine', () => {
   assert.equal(meta.discID, manifest.discID, 'meta.json discID matches the manifest');
 });
 
+test('new-disc refuses to build into the project folder or its parents', () => {
+  const r = run('tools/new-disc.js', ['--persona', SAMPLE, '--out', '.', '--force']);
+  assert.equal(r.status, 1, 'must refuse the project root');
+  assert.match(output(r), /Refusing to build into the project folder/);
+});
+
+test('new-disc refuses to delete a non-build .tmp directory', () => {
+  const out = path.join(tmpRoot, 'guarded-out');
+  const tmp = out + '.tmp';
+  fs.mkdirSync(tmp, { recursive: true });
+  fs.writeFileSync(path.join(tmp, 'user-file.txt'), 'keep me');
+  const r = run('tools/new-disc.js', ['--persona', SAMPLE, '--out', out]);
+  assert.equal(r.status, 1, 'must refuse an unrelated .tmp directory');
+  assert.equal(fs.readFileSync(path.join(tmp, 'user-file.txt'), 'utf8'), 'keep me');
+});
+
+test('burn-iso refuses a non-optical device', { skip: !fs.existsSync('/dev/nvme0n1') }, () => {
+  const iso = path.join(tmpRoot, 'dummy.iso');
+  fs.writeFileSync(iso, Buffer.alloc(4096));
+  const r = run('tools/burn-iso.js', ['--iso', iso, '--drive', '/dev/nvme0n1', '--test-only']);
+  assert.equal(r.status, 1);
+  assert.match(output(r), /Refusing to write to a non-optical device/);
+  assert.match(output(r), /BURN_FAIL B01/);
+});
+
 test('test-disc accepts the built disc', () => {
   const r = run('tools/test-disc.js', ['--disc', discDir]);
   fs.writeFileSync(path.join(tmpRoot, 'test-disc.log'), output(r));
