@@ -61,6 +61,15 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File tools\Test-Disc.ps1 -Disc build\disc
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
+      - name: Build a sealed disc (encrypted persona)
+        shell: powershell
+        run: |
+          $env:DISKLIFE_PASSPHRASE = 'ci-seal-passphrase-123'
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\New-Disc.ps1 -Persona examples\sample-persona -Out build\sealed-disc -PayloadPreset none -SealPersona
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\Test-Disc.ps1 -Disc build\sealed-disc
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
       - name: Studio web — syntax check
         shell: pwsh
         run: |
