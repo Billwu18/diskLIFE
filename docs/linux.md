@@ -10,9 +10,10 @@
 
 | 能力 | Linux 实现 | 依赖 |
 | --- | --- | --- |
-| 光盘启动器（E01–E10） | `start.sh` → `engine/launch.js` | Node.js ≥ 18（dsh 本身就需要） |
+| 光盘启动器（E01–E12） | `start.sh` → `engine/launch.js` | Node.js ≥ 18（dsh 本身就需要） |
 | 打包光盘目录 | `tools/new-disc.js` | Node.js |
 | 静态校验 | `tools/test-disc.js` | Node.js |
+| 人设加密 / 房间备份 | `--seal-persona`、`tools/backup-room.js` | Node.js（scrypt + AES-256-GCM） |
 | 生成 ISO（ISO 9660 + Joliet） | `tools/new-iso.js` | 内置写入器，无需任何第三方工具 |
 | 刻录 CD-R | `tools/burn-iso.js` | 可选：`wodim` / `cdrecord` / `cdrskin` / `growisofs` / `xorriso` |
 | Studio（本地网页工作台） | `start-studio.sh` → `studio/server.js` | Node.js + 浏览器 |
@@ -156,6 +157,37 @@ bash start.sh --start-timeout-sec 90
 来源目录顺序：`DISCPERSONA_SOURCE_HOME` > `DSH_HOME` > `~/.dsh` > `$XDG_DATA_HOME/dsh`。
 两种形态都不满足 → E07，提示先在本机正常登录一次 dsh。
 
+### 6.1 人设加密（可选，Linux Studio / CLI）
+
+打包时加 `--seal-persona`，能把盘上的敏感人设文件变成**密文**，双击只能看到 `persona.sealed`：
+
+```sh
+node tools/new-disc.js --persona persona/studio-e2e --out build/locked \
+  --payload-preset comfort --seal-persona --passphrase-stdin < passphrase.txt
+```
+
+- 加密 `persona.yml`、`AGENTS.md`、`lorebook.json`、`card.json`、`seed/*`；`meta.json`（名字/版本）和
+  `avatar.png` 保留明文用于光盘标签/图标；
+- 容器格式：`DLIFESEAL1` + scrypt(N=32768,r=8,p=1) + AES-256-GCM，格式代码在 `engine/lib/seal.js`；
+- **首次启动**由 `start.sh` / `start.cmd` 询问口令，解密到房间 `persona/`；之后房间优先，不再询问；
+- 删掉房间后再次启动会重新询问口令；口令不写进光盘、不写进房间；
+- 错误码 `E11`（读不到口令/Node）与 `E12`（口令错误或密文损坏）；
+- 双击盘上的 `.md/.yml` 已经不存在；房间里的解密副本仍受系统权限保护。
+- 目前**加密打包由 Linux Studio/CLI 完成**；Windows Studio 的「人设加密」开关会隐藏，但 Windows 启动器
+  可以直接解锁 Linux 生成的加密盘。
+
+### 6.2 房间加密备份（可选）
+
+房间运行时保持明文，但可以导出一个口令加密的单文件备份（跨平台，恢复只需 Node）：
+
+```sh
+node tools/backup-room.js --room ~/.local/DiscPersona/personas/<discID> \
+  --out build/backups/room.dlseal --passphrase-stdin --verify < passphrase.txt
+node engine/lib/seal.js unseal-tree --in build/backups/room.dlseal --out /tmp/room-restored --passphrase-stdin < passphrase.txt
+```
+
+备份包含整个房间（会话、记忆、`.credentials.yaml`），所以务必使用强口令并妥善保管。
+
 ---
 
 ## 7. ISO 与刻录
@@ -232,7 +264,8 @@ node engine/tools/disc-watch.js --test-root build/linux-disc --dry-run
   `--poll` 时退回 2.5 秒轮询。这样不依赖 `/proc/mounts` 轮询频率，插盘后通常 1 秒内响应。
 - 如果盘还没有被桌面挂载，会用 `udisksctl mount -b /dev/srN` 自动挂载（无 root；失败写日志，
   不影响桌面自己的挂载）。
-- 识别依据是盘根同时有 `pad.bin` 与 `persona/persona.yml`；从 `persona/meta.json` 取人设名，弹窗文案形如
+- 识别依据是盘根同时有 `pad.bin` 与 `persona/persona.yml`（或加密盘的 `persona/persona.sealed`）；从
+  `persona/meta.json` 取人设名，弹窗文案形如
   「检测到 diskLIFE 光盘：蓝色大肥鱼 (v1.0.0) — 启动 / 稍后」。
 - 选「启动」→ 以 `--no-wait` 拉起 `engine/launch.js` 并打开浏览器；选「稍后」→ 本次不再询问，拔出重插会再问。
 - 同一张盘被挂载两次（例如 loop + 光驱）只会唤醒一次：按 `discID = sha256(pad.bin)[0:16]` 去重。
@@ -290,7 +323,7 @@ Linux 版 Studio 的「07 出厂」页底部有一块 **Linux：插盘自动启�
 | ISO | IMAPI2（ISO9660 + Joliet） | 内置 ISO9660 + Joliet 写入器（始终使用） |
 | 守望者 | WMI 卷事件 + 启动项 | `/proc/mounts` 轮询 + XDG autostart |
 | 浏览器 | 默认浏览器 | `xdg-open` |
-| 错误码 | E01–E10 / B01–B08 / I01–I04 / PL00–PL05 | 相同 |
+| 错误码 | E01–E12 / B01–B08 / I01–I04 / PL00–PL05 | 相同 |
 
 `autorun.inf`、`start.cmd` 仍然会写入光盘，所以**同一张盘在 Windows 上也能用**；反过来，
 Windows 打的盘如果带了 `engine/launch.js` 与 `start.sh`，在 Linux 上也能用（本仓库的
@@ -329,6 +362,8 @@ CI 在 `ubuntu-latest` 上跑同一组命令（见 `.github/workflows/checks.yml
 | `E08` | `persona.yml` 里没有 `system_prompt: |` 块，或文件不是 UTF-8。 |
 | `E09` | 60 秒内没等到就绪 URL；看 `logs/stdout-*.log` 最后 15 行。 |
 | `E10` | 这个房间已经有一个实例在跑（退出码 0，会打开已有地址）。 |
+| `E11` | 加密人设读不到口令（非终端、未安装 Node、或口令为空）；用终端启动或设置 `DISKLIFE_PASSPHRASE`。 |
+| `E12` | 口令错误，或盘上的 `persona.sealed` 损坏。 |
 | `ISO_FAIL I05` | 写出的 ISO 回读校验不匹配；删掉旧 ISO 后重试（`--force`），仍失败请附上输出反馈。 |
 | `BURN_FAIL B06` | 没装写入工具（装 `cdrtools`/`cdrskin`/`xorriso`），或写入器打不开设备（USB 掉线/供电不足/权限）。先看 `journalctl -k \| tail -30` 有没有反复 `USB disconnect` / `reset`；换 USB 口（优先后置口、别用 hub）、换线、用双头供电线。 |
 | 插盘没反应 | 盘没有被自动挂载，或挂载点不满足 `pad.bin` + `persona/persona.yml`；先手动挂载再试。 |

@@ -59,7 +59,7 @@ DeepSeek Harness 实例——它有自己的 home、自己的记忆、自己的�
   Studio 支持导入 Character Card V2/V3（`.png` / `.json`）。
 - **Studio 上位机**：本地网页七步向导，实时预览、8 项校验，一键导出人设包 / 打包光盘 / 生成 ISO / 刻录。
   全程离线；AI 起草是可选项，默认关闭。
-- **打包器 + 校验器**：`New-Disc.ps1` 生成带 SHA-256 清单的光盘目录树；`Test-Disc.ps1` / `test-disc.js` 先做整套静态检查（Windows 36 项 / Linux 44 项），
+- **打包器 + 校验器**：`New-Disc.ps1` 生成带 SHA-256 清单的光盘目录树；`Test-Disc.ps1` / `test-disc.js` 先做整套静态检查（Windows 36 项 / Linux 48 项，加密盘 49 项），
   别在坏盘上浪费 CD-R。
 - **不依赖第三方刻录软件**：纯 PowerShell + IMAPI2（`Burn-Iso.ps1`），失败给 B01–B08 明确错误码，
   而不是 COM 堆栈。
@@ -71,7 +71,10 @@ DeepSeek Harness 实例——它有自己的 home、自己的记忆、自己的�
   `comfort`（人设卡 + 文件式记忆 + 人设库）、`token`（`dsh-context-compress` + `dsh-faster-compress` +
   `dsh-read-image-compress`，长对话更省 token）、`full`（五个都要，约 0.87 MB）；
   万一加载失败，启动器会自动回退到原生 profile。
-- **失败说得清**：每个错误都是中文说明 + 错误码（E01–E10），不静默退出；`E10` 表示「已经在跑」，
+- **可选人设加密**：`persona.yml`、`AGENTS.md`、`lorebook.json`、`seed/*` 可以打包成口令加密的
+  `persona/persona.sealed`；Windows / Linux 启动器首次启动时询问口令，`tools/backup-room.js` 可加密
+  整个房间用于备份/迁移。
+- **失败说得清**：每个错误都是中文说明 + 错误码（E01–E12），不静默退出；`E10` 表示「已经在跑」，
   退出码 0 并给出已有的 URL。
 - **不需要管理员权限，中文路径与空格路径可用。**
 
@@ -213,7 +216,7 @@ card.json       # 可选：Character Card V2 副本，便于与其他工具互�
 | --- | --- |
 | `start.cmd` | Windows 光盘入口，参数透传给启动器 |
 | `start.sh` | Linux 光盘入口，找 Node 并运行 `engine/launch.js` |
-| `engine/launch.ps1` / `engine/launch.js` | 整个启动流程（错误码 E01–E10），PowerShell / Node |
+| `engine/launch.ps1` / `engine/launch.js` | 整个启动流程（错误码 E01–E12），PowerShell / Node |
 | `engine/lib/*.ps1`、`engine/lib/*.js` | 日志/文案、YAML 子集、凭据、清单校验、dsh 进程控制 |
 | `engine/tools/disc-watch.ps1` / `disc-watch.js` | 插盘/挂载守望者（`-Install` / `--install`） |
 | `tools/New-Disc.ps1`、`tools/new-disc.js` | 人设包 → 光盘目录（写 `pad.bin`、manifest、autorun） |

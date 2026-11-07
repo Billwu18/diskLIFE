@@ -180,6 +180,15 @@ node tools/new-disc.js --persona examples/sample-persona --out build/linux-disc
 node tools/new-disc.js --persona examples/sample-persona --out build/linux-disc --reuse-pad
 node tools/new-disc.js --persona examples/sample-persona --out build/linux-disc --payload-preset token --force
 
+# optional: encrypt the persona files on the disc (passphrase asked on first boot)
+node tools/new-disc.js --persona examples/sample-persona --out build/locked-disc \
+  --seal-persona --passphrase-stdin < passphrase.txt
+
+# optional: passphrase-encrypted room backup / restore
+node tools/backup-room.js --room ~/.local/DiscPersona/personas/<discID> \
+  --out build/backups/room.dlseal --passphrase-stdin --verify < passphrase.txt
+node engine/lib/seal.js unseal-tree --in build/backups/room.dlseal --out /tmp/room --passphrase-stdin < passphrase.txt
+
 # 2) verify it (required files, manifest shape + hashes, pad.bin, start.sh, autorun when present)
 node tools/test-disc.js --disc build/linux-disc
 
@@ -211,6 +220,6 @@ Differences from the PowerShell side:
 | One disc, both OSes | yes — the packer requires both entries and both engines (`launch.ps1`, `launch.js`) |
 
 Error codes are shared: `I01`–`I05` (ISO; `I05` is the post-write verification), `B01`–`B08` (burn),
-`PL00`–`PL05` (payload). `B06` also covers "no burning tool installed" and "writer cannot open the drive"
+`PL00`–`PL05` (payload), `E11`/`E12` (sealed persona unlock). `B06` also covers "no burning tool installed" and "writer cannot open the drive"
 (e.g. a USB drive that keeps disconnecting, or a permissions problem). `--test-only` really opens the
 drive with the writer, so it fails loudly instead of reporting a false success.

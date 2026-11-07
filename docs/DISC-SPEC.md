@@ -12,7 +12,7 @@
   start.cmd                   Windows：ASCII，CRLF，只做「找 PowerShell → 转交 engine\launch.ps1」
   start.sh                    Linux：POSIX sh，LF，无 BOM，只做「找 node → 转交 engine/launch.js」
   engine\                     launch.ps1 + lib / launch.js + lib（由打包器从工作区整份复制）
-  persona\                    Persona Pack
+  persona\                    Persona Pack（persona.yml，或加密的 persona.sealed）
   pad.bin                     512 字节盘片身份文件
   .discpersona\manifest.json  完整性清单
   .discpersona\payload\       可选  预装插件载荷（profile-web\ + payload.json）
@@ -27,14 +27,17 @@
 
 ```
 persona\
-  persona.yml        必需   运行时唯一真源
-  meta.json          必需   展示信息（name/version 用于首页文案）；打包器会写入 discID
+  persona.yml        必需*  运行时唯一真源（未加密时）
+  persona.sealed     可选   人设加密容器（DLIFESEAL1，scrypt + AES-256-GCM）；此时 persona.yml 不存在
+  meta.json          必需   展示信息（name/version 用于首页文案）；打包器会写入 discID；加密时保持明文
+  avatar.png/.ico    可选   图标；加密时保持明文，供光盘标签/图标使用
   AGENTS.md          可选   家规（装进人格 home 作全局指令）
   card.json          可选   Character Card V2 兼容副本
   lorebook.json      可选   世界书；原生模式拼进 system prompt 附录
-  avatar.png/.ico    可选   图标；ico 优先，缺失回退 png，都没有则无图标
   seed\              可选   初始记忆，首次启动复制进 workspace\memories\
 ```
+
+`persona.yml` 与 `persona.sealed` 二选一：加密盘用后者，前者不存在。
 
 ### 1.1 插件载荷（`.discpersona\payload\`）
 
@@ -168,7 +171,7 @@ discID = lower( hex( sha256( pad.bin 的 512 字节 ))[0..16] )
 
 ## 7. 错误码
 
-错误码表、命令行开关、日志格式见 [`docs/engine.md`](engine.md)。E01–E10 由引擎实现。
+错误码表、命令行开关、日志格式见 [`docs/engine.md`](engine.md)。E01–E12 由引擎实现。
 
 ## 8. 版本与兼容
 

@@ -47,6 +47,7 @@ const {
   xdgDataHome,
 } = common;
 
+const seal = require('./lib/seal');
 const { buildPersonaPatchText, readPersonaDocument } = require('./lib/yaml');
 const {
   credentialHasLlm,
@@ -92,6 +93,7 @@ const BOOLEAN_OPTIONS = {
   nobrowser: 'noBrowser',
   upgradepersona: 'upgradePersona',
   nowait: 'noWait',
+  passphrasestdin: 'passphraseStdin',
 };
 
 const VALUE_OPTIONS = {
@@ -109,6 +111,7 @@ function parseArgv(argv) {
     startTimeoutSec: 60,
     noBrowser: false,
     upgradePersona: false,
+    passphraseStdin: false,
     noWait: false,
     help: false,
   };
@@ -377,7 +380,6 @@ function main() {
   }
 
   const required = [
-    { rel: 'persona/persona.yml', label: 'persona file' },
     { rel: 'persona/meta.json', label: 'persona metadata' },
     { rel: 'pad.bin', label: 'disc fingerprint file' },
   ];
@@ -386,6 +388,10 @@ function main() {
     if (!isFile(path.join(disc, item.rel))) {
       missing.push(item.rel + ' (' + item.label + ')');
     }
+  }
+  if (!isFile(path.join(disc, 'persona', 'persona.yml')) &&
+      !isFile(path.join(disc, 'persona', 'persona.sealed'))) {
+    missing.push('persona/persona.yml or persona/persona.sealed (persona file)');
   }
   if (missing.length > 0) {
     stop(
@@ -497,6 +503,16 @@ function main() {
   }
 
   // ---------------------------------------------------------------- 4. load the persona (room first, disc as fallback)
+  function getSealPassphrase() {
+    if (opts.passphraseStdin) {
+      return seal.readPassphraseFromStdin();
+    }
+    if (process.env.DISKLIFE_PASSPHRASE) {
+      return process.env.DISKLIFE_PASSPHRASE;
+    }
+    return seal.promptPassphrase('Passphrase for this persona disc: ');
+  }
+
   const discPersonaDir = path.join(disc, 'persona');
   const roomPersonaDir = path.join(personaRoot, 'persona');
   const discPersonaYml = path.join(discPersonaDir, 'persona.yml');
@@ -528,7 +544,53 @@ function main() {
   }
 
   let roomHadPersona = isFile(roomPersonaYml);
-  if (!roomHadPersona) {
+  const discSealed = path.join(discPersonaDir, 'persona.sealed');
+  if (!roomHadPersona && isFile(discSealed)) {
+    // Sealed disc: the persona files are ciphertext until the correct passphrase is entered.
+    let passphrase;
+    try {
+      passphrase = getSealPassphrase();
+    } catch (err) {
+      stop('E11',
+        'This disc has an encrypted persona, but no passphrase could be read: ' + (err.message || err),
+        'Run start.sh/start.cmd in a terminal, or pass the passphrase via DISKLIFE_PASSPHRASE.');
+    }
+    if (!passphrase) {
+      stop('E11', 'This disc has an encrypted persona, but the passphrase is empty.',
+        'Run start.sh/start.cmd again and enter the passphrase that was used when the disc was built.');
+    }
+    const unlockDir = roomPersonaDir + '.unlock-' + stamp;
+    try {
+      if (isDirectory(unlockDir)) {
+        fs.rmSync(unlockDir, { recursive: true, force: true });
+      }
+      seal.unsealToDir(discSealed, passphrase, unlockDir);
+      if (isDirectory(roomPersonaDir)) {
+        fs.rmSync(roomPersonaDir, { recursive: true, force: true });
+      }
+      fs.renameSync(unlockDir, roomPersonaDir);
+      // meta.json / avatar stay unencrypted on the disc for the label/icon; copy them into the
+      // room too, otherwise the room persona would lose its name/version metadata.
+      for (const visible of ['meta.json', 'avatar.png', 'avatar.ico']) {
+        const source = path.join(discPersonaDir, visible);
+        if (isFile(source)) {
+          fs.copyFileSync(source, path.join(roomPersonaDir, visible));
+        }
+      }
+      clearReadOnly(roomPersonaDir);
+      addLog('Sealed persona unlocked into the room: ' + roomPersonaDir, 'Notice');
+      roomHadPersona = true;
+    } catch (err) {
+      try {
+        if (isDirectory(unlockDir)) {
+          fs.rmSync(unlockDir, { recursive: true, force: true });
+        }
+      } catch (cleanupErr) { /* ignore */ }
+      stop('E12',
+        'Cannot unlock the encrypted persona: ' + (err.message || err),
+        'Check the passphrase. If it is correct, the sealed file on the disc may be damaged.');
+    }
+  } else if (!roomHadPersona) {
     // First run: freeze the whole disc persona into the room; the room wins from then on
     try {
       if (isDirectory(roomPersonaDir)) {

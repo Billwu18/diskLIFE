@@ -318,6 +318,8 @@ manifest 本身读不出来 → E03（无法确认完整性）。没有 manifest
 | E08 | 人设文件解析失败 | 1 | 找不到 `system_prompt`，或文件读不出来 |
 | E09 | 启动超时 | 1 | 60 秒内没等到就绪 URL（会附 stdout 最后 15 行） |
 | E10 | 已在运行 | **0** | 已有一个实例活着，已为你打开它的地址 |
+| E11 | 无法读取加密人设口令 | 1 | 加密盘首次启动但没有终端/Node/口令 |
+| E12 | 口令错误或密文损坏 | 1 | `persona.sealed` 解不开 |
 
 **E10 = 0 是有意的**：它不是失败，而是「已经开好了，我把浏览器叫出来了」。`start.cmd` 拿到 0 会直接关窗，
 用户看到的是浏览器亮起来。只有 E01–E09 才是失败（退出码 1，`start.cmd` 会 `pause` 让用户看提示）。
@@ -492,7 +494,7 @@ start.sh  →  node engine/launch.js --disc-root <disc> [--dsh-path ...] [--home
 | 换行 | `.ps1` / `.cmd` 为 CRLF + BOM | `.js` / `.sh` 为 LF、无 BOM |
 | 写 JSON | 手写序列化器（PS 5.1 空数组坑） | `JSON.stringify`（数组保持 `[]`） |
 
-以下契约完全一致，Linux 侧逐条照搬：错误码 E01–E10 与退出码、必需文件、manifest 校验（含
+以下契约完全一致，Linux 侧逐条照搬：错误码 E01–E12 与退出码、必需文件、manifest 校验（含
 `..` 越界拒绝）、房间解析顺序、人设「首启固化 / 房间优先 / pending 升级 / `--upgrade-persona`
 备份」、凭据分块搬运、seed 与 `AGENTS.md` 幂等补齐、人设卡同步、工作区 pin（真实数组）、
 `persona.patch.yml` 形状、payload 首启复制与「丢弃后冷启重试一次」、单实例锁（早写锁、

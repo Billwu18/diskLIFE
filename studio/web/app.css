@@ -177,7 +177,7 @@ html, body {
   opacity: .9;
 }
 
-input[type="text"], input:not([type]), input[type="color"], textarea, select {
+input[type="text"], input:not([type]), input[type="password"], input[type="color"], textarea, select {
   width: 100%;
   padding: 9px 11px;
   color: var(--text);

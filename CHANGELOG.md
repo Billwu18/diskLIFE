@@ -4,6 +4,81 @@ All notable changes to this project. Format loosely follows [Keep a Changelog](h
 this project does not promise semantic versioning for the launcher — the **disc format** version is what
 matters for compatibility.
 
+## [0.4.0] - 2026-11-08
+
+Optional passphrase encryption for the persona files on a disc, plus an encrypted room backup.
+
+### Added
+
+- **Sealed persona (`--seal-persona`)** — a disc can now carry `persona/persona.sealed` instead of
+  plaintext `persona.yml` / `AGENTS.md` / `lorebook.json` / `card.json` / `seed/*`. Double-clicking a
+  file on the disc no longer reveals the persona text. `meta.json` and the avatar stay visible for the
+  disc label and icon.
+- **Cross-platform unseal** — `engine/lib/seal.js` defines a small versioned container
+  (`DLIFESEAL1`, scrypt N=32768/r=8/p=1 + AES-256-GCM). The Linux launcher reads it directly; the
+  Windows launcher calls the same helper through Node. The first boot asks for the passphrase and
+  decrypts into the room; later boots use the room. Wrong passphrase → `E12`; no passphrase/Node →
+  `E11`.
+- **Encrypted room backup** — `tools/backup-room.js` encrypts an entire room (sessions, memories,
+  `.credentials.yaml`) into one `.dlseal` file; `engine/lib/seal.js unseal-tree` restores it anywhere
+  Node runs. `--verify` decrypts to a temporary directory to check the archive.
+- Studio: the Linux "07 Ship" step has an **Encrypt the persona** toggle + passphrase field; the
+  server passes the passphrase over stdin (never argv/env). Windows Studio hides the toggle (building
+  sealed discs is currently Linux-side; Windows launchers can unseal them).
+- `test-disc.js` accepts a sealed persona, checks the magic, and refuses plaintext persona files next
+  to `persona.sealed` (49 checks for a sealed disc).
+- `disc-watch.js` recognises sealed discs and asks for the passphrase with a graphical password dialog
+  before waking them.
+
+### Changed
+
+- `engine/version.txt` is now `0.4.0`.
+- Docs: README/README.zh-CN, `docs/linux.md` (§6.1–6.2), `docs/DISC-SPEC.md`, `docs/engine.md`,
+  `docs/studio.md`, `tools/README.md`.
+
+### Notes
+
+- The passphrase is never stored on the disc or in the room. Losing it means the sealed disc cannot
+  be decrypted.
+- The room keeps a decrypted persona copy after the first unlock; protect it with your OS account /
+  full-disk encryption. The podman/VeraCrypt route is documented separately.
+- Windows behavior is otherwise unchanged; no existing `.ps1` behavior was removed.
+
+---
+
+## [0.4.0] - 2026-11-08（中文）
+
+可选的人设文件口令加密，以及加密的房间备份。
+
+### 新增
+
+- **加密人设（`--seal-persona`）**：盘上不再有明文的 `persona.yml` / `AGENTS.md` / `lorebook.json` /
+  `card.json` / `seed/*`，改为 `persona/persona.sealed`；双击盘上文件看不到正文。`meta.json` 与头像
+  保持明文，用于光盘标签/图标。
+- **跨平台解锁**：`engine/lib/seal.js` 定义带版本的小容器（`DLIFESEAL1`，scrypt + AES-256-GCM）。
+  Linux 启动器直接读取；Windows 启动器通过 Node 调用同一实现。首次启动询问口令并解密到房间，
+  之后房间优先；口令错误 → `E12`，读不到口令/Node → `E11`。
+- **房间加密备份**：`tools/backup-room.js` 把整个房间（会话、记忆、`.credentials.yaml`）加密成
+  单个 `.dlseal`；`engine/lib/seal.js unseal-tree` 可在任意有 Node 的机器恢复；`--verify` 会临时解密校验。
+- Studio：「07 出厂」增加「人设加密」开关与口令输入；服务端通过 stdin 传口令（不进 argv/env）。
+  Windows Studio 隐藏该开关（加密打包目前在 Linux 侧；Windows 启动器可解锁 Linux 生成的加密盘）。
+- `test-disc.js` 支持加密盘：校验 `persona.sealed` 魔数，并拒绝在它旁边残留明文人设文件（加密盘 49 项检查）。
+- `disc-watch.js` 识别加密盘，启动前用图形口令框询问口令。
+
+### 变更
+
+- `engine/version.txt` 更新为 `0.4.0`。
+- 文档同步：README / README.zh-CN、`docs/linux.md`（6.1–6.2）、`docs/DISC-SPEC.md`、
+  `docs/engine.md`、`docs/studio.md`、`tools/README.md`。
+
+### 说明
+
+- 口令不会写进光盘或房间；丢失口令后加密盘无法解密。
+- 首次解锁后房间仍是明文人设副本，请用系统账户权限 / 全盘加密保护房间；VeraCrypt 等容器方案另见文档。
+- Windows 其它行为不变，未移除任何既有 `.ps1` 功能。
+
+---
+
 ## [0.3.0] - 2026-11-07
 
 Linux support: a parallel Node.js implementation of the whole pipeline, sharing the disc format, the

@@ -73,8 +73,11 @@ disc (read-only)                    room (your disk, writable)
   `token` (`dsh-context-compress` + `dsh-faster-compress` + `dsh-read-image-compress` — softer
   long-chat context, fewer tokens), or `full` (all five, ~0.87 MB). If a pack ever fails to load,
   the launcher falls back to a vanilla profile automatically.
-- **Honest failure modes** — every failure is a Chinese message plus an error code (E01–E10), never
+- **Honest failure modes** — every failure is a clear message plus an error code (E01–E12), never
   a silent exit. `E10` means "already running" and exits 0 with the existing URL.
+- **Optional persona encryption** — put `persona.yml`, `AGENTS.md`, `lorebook.json` and `seed/*` into
+  a passphrase-encrypted `persona/persona.sealed`; Windows and Linux launchers ask for the passphrase
+  on the first boot, and `tools/backup-room.js` can encrypt a whole room for backup/migration.
 - **No admin rights; Chinese paths and spaces supported.**
 - **Windows and Linux** — the disc format is shared. Windows uses `start.cmd` + PowerShell/IMAPI2;
   Linux uses `start.sh` + a dependency-free Node.js engine, a built-in ISO9660/Joliet writer, and
@@ -245,7 +248,7 @@ Design rules that keep it pleasant:
 | --- | --- |
 | `start.cmd` | Windows disc entry point; forwards arguments to the launcher |
 | `start.sh` | Linux disc entry point; finds Node and runs `engine/launch.js` |
-| `engine/launch.ps1` / `engine/launch.js` | The whole boot sequence (error codes E01–E10), PowerShell / Node |
+| `engine/launch.ps1` / `engine/launch.js` | The whole boot sequence (error codes E01–E12), PowerShell / Node |
 | `engine/lib/*.ps1`, `engine/lib/*.js` | Console/logging, YAML subset, credentials, manifest, DSH process control |
 | `engine/tools/disc-watch.ps1` / `disc-watch.js` | Watcher: launches on disc insert / mount (`-Install` / `--install`) |
 | `tools/New-Disc.ps1`, `tools/new-disc.js` | Persona pack → disc tree (+ `pad.bin`, manifest, autorun) |

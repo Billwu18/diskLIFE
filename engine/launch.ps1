@@ -10,6 +10,7 @@
     -StartTimeoutSec <n>   max seconds to wait for readiness (default 60)
     -NoBrowser             do not open a browser automatically
     -UpgradePersona        overwrite the room persona with the one on the disc (backed up to persona.bak-<timestamp> first)
+    -PassphraseStdin       read the sealed-persona passphrase from the first stdin line (automation / self-test)
     -NoWait                return right after launch instead of waiting for a key (automation / self-test / disc watcher)
 #>
 [CmdletBinding()]
@@ -20,6 +21,7 @@ param(
     [int]$StartTimeoutSec = 60,
     [switch]$NoBrowser,
     [switch]$UpgradePersona,
+    [switch]$PassphraseStdin,
     [switch]$NoWait
 )
 
@@ -45,7 +47,6 @@ if (-not $disc -or -not (Test-Path -LiteralPath $disc -PathType Container)) {
 }
 
 $required = @(
-    @{ Rel = 'persona\persona.yml'; Label = 'persona file' },
     @{ Rel = 'persona\meta.json'; Label = 'persona metadata' },
     @{ Rel = 'pad.bin'; Label = 'disc fingerprint file' }
 )
@@ -55,6 +56,11 @@ foreach ($item in $required) {
     if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
         [void]$missing.Add($item.Rel + ' (' + $item.Label + ')')
     }
+}
+$hasPlainPersona = Test-Path -LiteralPath (Join-Path $disc 'persona\persona.yml') -PathType Leaf
+$hasSealedPersona = Test-Path -LiteralPath (Join-Path $disc 'persona\persona.sealed') -PathType Leaf
+if (-not $hasPlainPersona -and -not $hasSealedPersona) {
+    [void]$missing.Add('persona\persona.yml or persona\persona.sealed (persona file)')
 }
 if ($missing.Count -gt 0) {
     Stop-DiscPersona -Code 'E01' `
@@ -146,6 +152,94 @@ try {
 } catch { }
 
 # ---------------------------------------------------------------- 4. load the persona (room first, disc as fallback)
+function Resolve-DPNodeExe {
+    foreach ($name in @('node.exe', 'node')) {
+        $cmd = Get-Command $name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($cmd -and $cmd.Source) { return $cmd.Source }
+    }
+    return $null
+}
+
+function Read-DPSealPassphrase {
+    if ($env:DISKLIFE_PASSPHRASE) { return $env:DISKLIFE_PASSPHRASE }
+    if ($PassphraseStdin) {
+        try { return [Console]::In.ReadLine() } catch { return $null }
+    }
+    $secure = Read-Host -AsSecureString 'Passphrase for this persona disc'
+    if ($null -eq $secure) { return $null }
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+    try {
+        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+    } finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) | Out-Null
+    }
+}
+
+function Invoke-DPSealDecrypt {
+    param(
+        [Parameter(Mandatory = $true)][string]$SealedPath,
+        [Parameter(Mandatory = $true)][string]$OutDir,
+        [Parameter(Mandatory = $true)][string]$Passphrase
+    )
+    $node = Resolve-DPNodeExe
+    if (-not $node) {
+        Stop-DiscPersona -Code 'E11' `
+            -Message 'This disc has an encrypted persona, but Node.js was not found to unlock it.' `
+            -Hint 'Install DeepSeek Harness (Node.js comes with it) or put node.exe on PATH, then retry.'
+    }
+    $sealScript = Join-Path $script:EngineDir 'lib\seal.js'
+    if (-not (Test-Path -LiteralPath $sealScript -PathType Leaf)) {
+        Stop-DiscPersona -Code 'E11' `
+            -Message ('The sealed-persona helper is missing from this disc: ' + $sealScript) `
+            -Hint 'Rebuild the disc with tools\New-Disc.ps1.'
+    }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $node
+    $psi.Arguments = '"' + $sealScript + '" decrypt --in "' + $SealedPath + '" --out "' + $OutDir + '" --passphrase-stdin'
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    try {
+        $proc = [System.Diagnostics.Process]::Start($psi)
+    } catch {
+        Stop-DiscPersona -Code 'E12' `
+            -Message ('Cannot start the sealed-persona helper: ' + $_.Exception.Message) `
+            -Hint 'Check that Node.js can run, then retry.'
+    }
+    $exitCode = $null
+    try {
+        $proc.StandardInput.WriteLine($Passphrase)
+        $proc.StandardInput.Close()
+        $stdout = $proc.StandardOutput.ReadToEnd()
+        $stderr = $proc.StandardError.ReadToEnd()
+        $proc.WaitForExit()
+        $exitCode = $proc.ExitCode
+    } finally {
+        if ($proc -and -not $proc.HasExited) { try { $proc.Kill() } catch { } }
+        if ($proc) { $proc.Dispose() }
+    }
+    if ($exitCode -ne 0) {
+        $detail = ([string]$stderr).Trim()
+        if (-not $detail) { $detail = 'the helper exited with code ' + $exitCode }
+        Stop-DiscPersona -Code 'E12' `
+            -Message ('Cannot unlock the encrypted persona: ' + $detail) `
+            -Hint 'Check the passphrase. If it is correct, the sealed file on the disc may be damaged.'
+    }
+    return $stdout
+}
+
+function Copy-DPVisiblePersonaFiles {
+    param([string]$FromDir, [string]$ToDir)
+    foreach ($name in @('meta.json', 'avatar.png', 'avatar.ico')) {
+        $src = Join-Path $FromDir $name
+        if (Test-Path -LiteralPath $src -PathType Leaf) {
+            Copy-Item -LiteralPath $src -Destination (Join-Path $ToDir $name) -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Sync-DPPersonaCard {
     <#
       Sync the room persona into a card of dsh-persona-dafeiyu and make it the selected one.
@@ -348,7 +442,35 @@ if ($UpgradePersona -and (Test-Path -LiteralPath $roomPersonaDir -PathType Conta
 }
 
 $roomHadPersona = Test-Path -LiteralPath $roomPersonaYml -PathType Leaf
-if (-not $roomHadPersona) {
+$discSealed = Join-Path $discPersonaDir 'persona.sealed'
+if (-not $roomHadPersona -and (Test-Path -LiteralPath $discSealed -PathType Leaf)) {
+    # Sealed disc: decrypt into a temporary directory, then move it into the room.
+    $passphrase = Read-DPSealPassphrase
+    if (-not $passphrase) {
+        Stop-DiscPersona -Code 'E11' `
+            -Message 'This disc has an encrypted persona, but the passphrase is empty.' `
+            -Hint 'Run start.cmd again and enter the passphrase used when the disc was built.'
+    }
+    $unlockDir = $roomPersonaDir + '.unlock-' + $stamp
+    try {
+        if (Test-Path -LiteralPath $unlockDir) { Remove-Item -LiteralPath $unlockDir -Recurse -Force }
+        [void](Invoke-DPSealDecrypt -SealedPath $discSealed -OutDir $unlockDir -Passphrase $passphrase)
+        if (Test-Path -LiteralPath $roomPersonaDir) { Remove-Item -LiteralPath $roomPersonaDir -Recurse -Force }
+        Move-Item -LiteralPath $unlockDir -Destination $roomPersonaDir -Force
+        Copy-DPVisiblePersonaFiles -FromDir $discPersonaDir -ToDir $roomPersonaDir
+        [void](Clear-DPReadOnly -Path $roomPersonaDir)
+        Add-DPLog -Message ('Sealed persona unlocked into the room: ' + $roomPersonaDir) -Level 'Notice'
+        $roomHadPersona = Test-Path -LiteralPath $roomPersonaYml -PathType Leaf
+    } catch {
+        try { if (Test-Path -LiteralPath $unlockDir) { Remove-Item -LiteralPath $unlockDir -Recurse -Force } } catch { }
+        if ($_.Exception.Message -match '^E1[12]') { throw }
+        Stop-DiscPersona -Code 'E12' `
+            -Message ('Cannot unlock the encrypted persona: ' + $_.Exception.Message) `
+            -Hint 'Check the passphrase. If it is correct, the sealed file on the disc may be damaged.'
+    } finally {
+        $passphrase = $null
+    }
+} elseif (-not $roomHadPersona) {
     # First run: freeze the whole disc persona into the room; the room wins from then on
     try {
         if (Test-Path -LiteralPath $roomPersonaDir) { Remove-Item -LiteralPath $roomPersonaDir -Recurse -Force }

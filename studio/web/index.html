@@ -172,6 +172,14 @@
           <label>插件包<span class="tip">随盘预装的插件，首启时复制进人格房间；不联网也能用</span></label>
           <div id="payload-options" class="payload-options"></div>
         </div>
+        <div class="field" id="seal-field">
+          <label>人设加密（可选）<br><span class="tip">盘上的 persona.yml / AGENTS.md / lorebook / seed 会变成密文；首次启动输入口令才解密到房间</span></label>
+          <div class="burn-row">
+            <label style="display:flex;gap:8px;align-items:center;font-size:12.5px;white-space:nowrap"><input type="checkbox" id="f-seal" />启用</label>
+            <input type="password" id="f-seal-pass" placeholder="至少 8 位口令" autocomplete="new-password" disabled style="flex:1;min-width:160px" />
+          </div>
+          <p class="hint tight">口令不会写进光盘或房间；丢失后无法解密。房间里的解密副本仍受系统权限/全盘加密保护。</p>
+        </div>
         <div class="ship">
           <div class="ship-step">
             <b>1</b>

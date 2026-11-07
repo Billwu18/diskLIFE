@@ -618,14 +618,29 @@ async function doExport() {
 
 async function doBuild() {
   if (!lastBuild.persona) { await doExport(); if (!lastBuild.persona) return; }
-  setLog(T('正在打包成光盘目录（会顺带校验 36 项）…'));
+  const sealCheck = document.getElementById('f-seal');
+  const sealPassInput = document.getElementById('f-seal-pass');
+  const wantSeal = Boolean(sealCheck && sealCheck.checked);
+  const sealPassphrase = sealPassInput ? sealPassInput.value : '';
+  if (wantSeal && sealPassphrase.length < 8) {
+    setLog(T('加密口令至少 8 位。'), 'bad');
+    return;
+  }
+  setLog(T('正在打包成光盘目录（会顺带校验 48 项）…'));
   try {
-    const data = await api('/api/build', { persona: lastBuild.persona, out: '', reusePad: false, payload: state.payloadPreset || 'comfort' });
+    const data = await api('/api/build', {
+      persona: lastBuild.persona,
+      out: '',
+      reusePad: false,
+      payload: state.payloadPreset || 'comfort',
+      seal: wantSeal,
+      sealPassphrase: wantSeal ? sealPassphrase : undefined,
+    });
     if (!data.ok) throw new Error((data.output || '').split('\n').slice(-3).join(' / ') || data.code);
     lastBuild.disc = data.outDir;
     $('#ship-disc').textContent = data.outDir + '  · discID=' + data.discID;
     const verdict = data.testOk ? T('静态校验通过') : T('静态校验未通过（看顶部日志）');
-    setLog(T('光盘目录就绪：discID=') + data.discID + ' · ' + verdict, data.testOk ? 'ok' : 'bad');
+    setLog(T('光盘目录就绪：discID=') + data.discID + ' · ' + verdict + (data.sealed ? T(' · 人设已加密') : ''), data.testOk ? 'ok' : 'bad');
     if (!data.testOk && data.testOutput) setLog(String(data.testOutput).split(String.fromCharCode(10)).slice(-4).join(' / '), 'bad');
   } catch (e) {
     setLog(T('打包失败：') + e.message, 'bad');
@@ -835,6 +850,14 @@ function bindEvents() {
     catch (e) { setLog(T('复制失败，浏览器不给权限。'), 'bad'); }
   });
 
+  const sealCheck = document.getElementById('f-seal');
+  const sealPassInput = document.getElementById('f-seal-pass');
+  if (sealCheck && sealPassInput) {
+    sealCheck.addEventListener('change', () => {
+      sealPassInput.disabled = !sealCheck.checked;
+      if (!sealCheck.checked) sealPassInput.value = '';
+    });
+  }
   $('#f-avatar').addEventListener('change', (e) => handleAvatar(e.target.files[0]));
   $('#f-ai').addEventListener('change', (e) => {
     state.ai = e.target.checked;

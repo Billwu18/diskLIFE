@@ -25,6 +25,7 @@ function run(script, args = [], opts = {}) {
     cwd: REPO,
     encoding: 'utf8',
     timeout: opts.timeout || 180000,
+    input: opts.input,
     env: { ...process.env, ...(opts.env || {}) },
   });
 }
@@ -77,6 +78,83 @@ test('new-disc builds a disc tree with start.sh and the Linux engine', () => {
 
   const meta = JSON.parse(fs.readFileSync(path.join(discDir, 'persona', 'meta.json'), 'utf8'));
   assert.equal(meta.discID, manifest.discID, 'meta.json discID matches the manifest');
+});
+
+test('sealed files round-trip and reject a wrong passphrase', () => {
+  const seal = require(path.join(REPO, 'engine', 'lib', 'seal.js'));
+  const dir = path.join(tmpRoot, 'seal-src');
+  fs.cpSync(SAMPLE, dir, { recursive: true });
+  seal.sealPersonaDir(dir, 'test-passphrase-123');
+  assert.ok(fs.existsSync(path.join(dir, 'persona.sealed')));
+  assert.ok(!fs.existsSync(path.join(dir, 'persona.yml')), 'plaintext persona.yml must be gone');
+  assert.ok(fs.existsSync(path.join(dir, 'meta.json')), 'meta.json stays visible for the disc label');
+  const restored = path.join(tmpRoot, 'seal-out');
+  seal.unsealToDir(path.join(dir, 'persona.sealed'), 'test-passphrase-123', restored);
+  assert.equal(fs.readFileSync(path.join(restored, 'persona.yml'), 'utf8'),
+    fs.readFileSync(path.join(SAMPLE, 'persona.yml'), 'utf8'));
+  assert.throws(() => seal.unsealToDir(path.join(dir, 'persona.sealed'), 'wrong-pass', path.join(tmpRoot, 'seal-bad')),
+    /cannot decrypt/);
+});
+
+test('a sealed disc builds, verifies and launches with its passphrase', () => {
+  const sealed = path.join(tmpRoot, 'sealed-disc');
+  const pass = 'test-seal-pass-123';
+  const build = run('tools/new-disc.js', ['--persona', SAMPLE, '--out', sealed,
+    '--payload-preset', 'none', '--seal-persona', '--passphrase-stdin'], { input: pass + '\n' });
+  assert.equal(build.status, 0, output(build));
+  assert.match(build.stdout, /DISC_OK/);
+  assert.ok(fs.existsSync(path.join(sealed, 'persona', 'persona.sealed')));
+  assert.ok(!fs.existsSync(path.join(sealed, 'persona', 'persona.yml')));
+  assert.ok(!fs.existsSync(path.join(sealed, 'persona', 'AGENTS.md')));
+
+  const verify = run('tools/test-disc.js', ['--disc', sealed]);
+  assert.equal(verify.status, 0, output(verify));
+  assert.match(verify.stdout, /PASS/);
+
+  const home = path.join(tmpRoot, 'sealed-home');
+  const launch = spawnSync(NODE, [
+    path.join(REPO, 'engine', 'launch.js'),
+    '--disc-root', sealed,
+    '--dsh-path', path.join(REPO, 'engine', '_selftest', 'stub-dsh.sh'),
+    '--home-root', home,
+    '--no-browser', '--no-wait', '--passphrase-stdin', '--start-timeout-sec', '20',
+  ], { cwd: REPO, encoding: 'utf8', input: pass + '\n', timeout: 90000 });
+  assert.equal(launch.status, 0, output(launch));
+  const room = fs.readdirSync(home).map((name) => path.join(home, name))[0];
+  assert.ok(fs.existsSync(path.join(room, 'persona', 'persona.yml')), 'room gets the decrypted persona');
+  const state = JSON.parse(fs.readFileSync(path.join(room, 'state.json'), 'utf8'));
+  assert.equal(state.personaVersion, '1.0.0');
+  const pid = JSON.parse(fs.readFileSync(path.join(room, 'home', '.lock'), 'utf8')).pid;
+  try { process.kill(-pid, 'SIGKILL'); } catch (e) { try { process.kill(pid, 'SIGKILL'); } catch (e2) { /* ignore */ } }
+
+  const badHome = path.join(tmpRoot, 'sealed-bad-home');
+  const bad = spawnSync(NODE, [
+    path.join(REPO, 'engine', 'launch.js'),
+    '--disc-root', sealed,
+    '--dsh-path', path.join(REPO, 'engine', '_selftest', 'stub-dsh.sh'),
+    '--home-root', badHome,
+    '--no-browser', '--no-wait', '--passphrase-stdin',
+  ], { cwd: REPO, encoding: 'utf8', input: 'wrong-passphrase\n', timeout: 60000 });
+  assert.equal(bad.status, 1);
+  assert.match(output(bad), /E12/);
+});
+
+test('backup-room encrypts a room and restores it exactly', () => {
+  const seal = require(path.join(REPO, 'engine', 'lib', 'seal.js'));
+  const room = path.join(tmpRoot, 'room-src');
+  fs.mkdirSync(path.join(room, 'workspace'), { recursive: true });
+  fs.writeFileSync(path.join(room, 'state.json'), '{"discID":"test"}\n');
+  fs.writeFileSync(path.join(room, 'workspace', 'note.md'), 'remember this\n');
+  const backup = path.join(tmpRoot, 'room.dlseal');
+  const pass = 'room-backup-pass-123';
+  const r = run('tools/backup-room.js', ['--room', room, '--out', backup, '--passphrase-stdin', '--verify'], { input: pass + '\n' });
+  assert.equal(r.status, 0, output(r));
+  assert.match(r.stdout, /ROOM_BACKUP_OK/);
+  assert.ok(fs.existsSync(backup));
+  const restored = path.join(tmpRoot, 'room-restored');
+  const count = seal.unsealTreeFromFile(backup, restored, pass);
+  assert.equal(count, 2);
+  assert.equal(fs.readFileSync(path.join(restored, 'workspace', 'note.md'), 'utf8'), 'remember this\n');
 });
 
 test('new-disc refuses to build into the project folder or its parents', () => {
@@ -318,6 +396,39 @@ test('Studio exposes Linux integration and toggles the autostart entry', async (
     assert.ok(!fs.existsSync(desktop));
   } finally {
     await stopStudio(studio.child);
+  }
+});
+
+test('Studio builds a sealed persona disc through /api/build', async () => {
+  const studio = await startStudio();
+  const outDir = path.join(REPO, 'build', 'it-studio-sealed');
+  const pass = 'studio-seal-test-pass-123';
+  try {
+    const res = await fetch(studio.url + 'api/build', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        persona: 'examples/sample-persona',
+        out: 'build/it-studio-sealed',
+        payload: 'none',
+        force: true,
+        seal: true,
+        sealPassphrase: pass,
+      }),
+    });
+    const body = await res.json();
+    assert.equal(body.ok, true, JSON.stringify(body).slice(0, 2000));
+    assert.equal(body.sealed, true);
+    assert.equal(body.testOk, true);
+    assert.ok(fs.existsSync(path.join(outDir, 'persona', 'persona.sealed')));
+    assert.ok(!fs.existsSync(path.join(outDir, 'persona', 'persona.yml')));
+    const seal = require(path.join(REPO, 'engine', 'lib', 'seal.js'));
+    const restored = path.join(tmpRoot, 'studio-sealed-out');
+    seal.unsealToDir(path.join(outDir, 'persona', 'persona.sealed'), pass, restored);
+    assert.ok(fs.existsSync(path.join(restored, 'persona.yml')));
+  } finally {
+    await stopStudio(studio.child);
+    fs.rmSync(outDir, { recursive: true, force: true });
   }
 });
 

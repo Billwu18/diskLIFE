@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const common = require('./lib/common');
+const seal = require('../engine/lib/seal');
 
 const out = common.out;
 const PAD_SIZE = 512;
@@ -29,9 +30,12 @@ Options:
   --payload-preset <name>  none | comfort | token | full (default: comfort)
   --reuse-pad              Reuse <out>/pad.bin so the discID does not change
   --force                  Allow replacing a non-empty directory that is not a disc
+  --seal-persona           Encrypt persona.yml/AGENTS.md/lorebook/seed into persona.sealed
+                           (a passphrase is required on the first boot; meta.json/avatar stay visible)
+  --passphrase-stdin       Read the seal passphrase from the first stdin line (automation/Studio)
   --help                   Show this help
 
-Aliases: --Persona, --Out, --PayloadPreset, --ReusePad, --Force.
+Aliases: --Persona, --Out, --PayloadPreset, --ReusePad, --Force, --SealPersona.
 Last line: DISC_OK discID=<hex> files=<n> out=<abs path>
 `.trim();
 
@@ -226,13 +230,15 @@ const notes = [];
 function main() {
     const parsed = common.parseArgs(process.argv.slice(2), {
         values: ['persona', 'out', 'payloadPreset'],
-        flags: ['reusePad', 'force'],
+        flags: ['reusePad', 'force', 'sealPersona', 'passphraseStdin'],
         aliases: {
             Persona: 'persona',
             Out: 'out',
             PayloadPreset: 'payloadPreset',
             ReusePad: 'reusePad',
-            Force: 'force'
+            Force: 'force',
+            SealPersona: 'sealPersona',
+            PassphraseStdin: 'passphraseStdin'
         }
     });
     if (parsed.errors.length > 0 || parsed.positionals.length > 0) {
@@ -442,6 +448,30 @@ function buildDisc(personaArg, outArg, opts) {
                 ') does not match the one from pad.bin; overwrote the output copy.');
         } else {
             out.skip('meta.json discID already matches pad.bin');
+        }
+
+        if (opts.sealPersona) {
+            let passphrase;
+            try {
+                if (opts.passphraseStdin) {
+                    passphrase = seal.readPassphraseFromStdin();
+                } else if (process.env.DISKLIFE_PASSPHRASE) {
+                    passphrase = process.env.DISKLIFE_PASSPHRASE;
+                } else {
+                    passphrase = seal.promptPassphrase('Passphrase for encrypted persona: ');
+                    const repeat = seal.promptPassphrase('Repeat passphrase: ');
+                    if (repeat !== passphrase) throw new Error('the two passphrases do not match');
+                }
+            } catch (error) {
+                throw new Error('Cannot read the seal passphrase: ' + (error && error.message ? error.message : String(error)));
+            }
+            if (!passphrase || passphrase.length < 8) {
+                throw new Error('The seal passphrase must be at least 8 characters (it protects the persona on the disc).');
+            }
+            seal.sealPersonaDir(personaDst, passphrase);
+            notes.push('Persona encrypted on the disc (persona.yml/AGENTS.md/lorebook/seed -> persona.sealed); the passphrase is required on first boot.');
+            out.note(notes[notes.length - 1]);
+            out.ok('persona/ sealed: plaintext persona.yml/AGENTS.md/lorebook/seed removed');
         }
 
         // --------------------------------------------------------------

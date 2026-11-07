@@ -171,7 +171,9 @@ function isFile(p) {
 function isDiscPersonaRoot(root) {
   if (!root) return false;
   const root2 = String(root).replace(/\/+$/, '') || '/';
-  return isFile(path.join(root2, 'pad.bin')) && isFile(path.join(root2, 'persona', 'persona.yml'));
+  if (!isFile(path.join(root2, 'pad.bin'))) return false;
+  return isFile(path.join(root2, 'persona', 'persona.yml')) ||
+    isFile(path.join(root2, 'persona', 'persona.sealed'));
 }
 
 // discID = sha256(pad.bin)[0:16]; the same disc mounted twice (e.g. loop + drive) must wake only once.
@@ -354,10 +356,29 @@ function chooseLauncher(root) {
   return { script: discScript, source: 'disc' };
 }
 
-function startLauncher(root, launchScript) {
+function promptSealPassphrase(root) {
+  if (process.env.DISKLIFE_PASSPHRASE) return process.env.DISKLIFE_PASSPHRASE;
+  const text = 'diskLIFE 光盘已加密\n\n输入口令解锁人设：';
+  const zenity = spawnSync('zenity', ['--password', '--title=diskLIFE', '--text=' + text], { encoding: 'utf8' });
+  if (!zenity.error) {
+    if (zenity.status !== 0) return null;
+    const value = String(zenity.stdout || '').replace(/\r?\n$/, '');
+    return value || null;
+  }
+  const kdialog = spawnSync('kdialog', ['--password', text, '--title', 'diskLIFE'], { encoding: 'utf8' });
+  if (!kdialog.error) {
+    if (kdialog.status !== 0) return null;
+    const value = String(kdialog.stdout || '').replace(/\r?\n$/, '');
+    return value || null;
+  }
+  return null;
+}
+
+function startLauncher(root, launchScript, passphrase) {
   const args = [launchScript, '--disc-root', root, '--no-wait'];
   if (opts.noBrowser) args.push('--no-browser');
   if (opts.homeRoot) args.push('--home-root', path.resolve(opts.homeRoot));
+  if (passphrase) args.push('--passphrase-stdin');
   try {
     const fd = fs.openSync(logFile, 'a');
     let child;
@@ -365,10 +386,16 @@ function startLauncher(root, launchScript) {
       child = spawn(process.execPath, args, {
         cwd: root,
         detached: true,
-        stdio: ['ignore', fd, fd],
+        stdio: [passphrase ? 'pipe' : 'ignore', fd, fd],
       });
     } finally {
       try { fs.closeSync(fd); } catch (e) { /* ignore */ }
+    }
+    if (passphrase && child.stdin) {
+      try {
+        child.stdin.write(passphrase + '\n');
+        child.stdin.end();
+      } catch (e) { /* launcher will fail with E11 */ }
     }
     child.on('error', (err) => {
       writeLog('Launcher failed after start: ' + ((err && err.message) || String(err)), 'error');
@@ -423,7 +450,17 @@ function inspectRoot(root, dryRun) {
     return true;
   }
 
-  if (!startLauncher(root, launcher.script)) return false;
+  let passphrase = null;
+  if (isFile(path.join(root, 'persona', 'persona.sealed')) &&
+      !isFile(path.join(root, 'persona', 'persona.yml'))) {
+    passphrase = promptSealPassphrase(root);
+    if (!passphrase) {
+      handled.set(root, { action: 'sealed-locked', id: discID });
+      writeLog('Encrypted persona: no passphrase was entered; skipping this disc.', 'skip');
+      return true;
+    }
+  }
+  if (!startLauncher(root, launcher.script, passphrase)) return false;
   handled.set(root, { action: 'launched', id: discID });
   writeLog('Launcher started (it reports the result in its own log).', 'ok');
   return true;

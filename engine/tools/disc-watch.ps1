@@ -55,7 +55,9 @@ function Test-DiscPersonaRoot {
     $root2 = $Root.TrimEnd('\')
     $pad = Join-Path $root2 'pad.bin'
     $per = Join-Path $root2 'persona\persona.yml'
-    return ((Test-Path -LiteralPath $pad -PathType Leaf) -and (Test-Path -LiteralPath $per -PathType Leaf))
+    $sealed = Join-Path $root2 'persona\persona.sealed'
+    return ((Test-Path -LiteralPath $pad -PathType Leaf) -and
+        ((Test-Path -LiteralPath $per -PathType Leaf) -or (Test-Path -LiteralPath $sealed -PathType Leaf)))
 }
 
 # Entry point: prefer start.cmd (the same path the user would double-click), else engine\launch.ps1

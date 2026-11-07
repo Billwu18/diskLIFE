@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const common = require('./lib/common');
+const seal = require('../engine/lib/seal');
 
 const out = common.out;
 
@@ -96,12 +97,15 @@ function runChecks(discPath) {
         'README.txt',
         'pad.bin',
         '.discpersona/manifest.json',
-        'persona/meta.json',
-        'persona/persona.yml'
+        'persona/meta.json'
     ];
     for (const rel of requiredFiles) {
         addCheck('exists: ' + rel, common.isFile(path.join(discPath, rel)), 'file missing');
     }
+    const personaPlain = common.isFile(path.join(discPath, 'persona', 'persona.yml'));
+    const personaSealedFile = common.isFile(path.join(discPath, 'persona', 'persona.sealed'));
+    addCheck('persona is present (persona.yml or persona.sealed)', personaPlain || personaSealedFile,
+        'neither persona.yml nor persona.sealed exists');
     addCheck('dual-boot entry points exist (start.sh + start.cmd)',
         common.isFile(path.join(discPath, 'start.sh')) && common.isFile(path.join(discPath, 'start.cmd')),
         'one disc should boot on both Linux and Windows; one entry point is missing');
@@ -245,12 +249,29 @@ function runChecks(discPath) {
     }
 
     const ymlPath = path.join(discPath, 'persona', 'persona.yml');
-    if (common.isFile(ymlPath)) {
+    const sealedPath = path.join(discPath, 'persona', 'persona.sealed');
+    if (common.isFile(sealedPath)) {
+        const sealedBytes = fs.readFileSync(sealedPath);
+        addCheck('persona/persona.sealed is a diskLIFE sealed file',
+            seal.looksSealed(sealedBytes) && sealedBytes.length > seal.HEADER_LEN,
+            'bad magic or truncated sealed payload');
+        const personaDir = path.join(discPath, 'persona');
+        const leftovers = common.walkFiles(personaDir, { warn: function () {} })
+            .map(function (file) { return file.rel; })
+            .filter(function (rel) {
+                if (rel === 'meta.json' || rel === 'persona.sealed') return false;
+                if (/^avatar\.(png|ico)$/i.test(rel)) return false;
+                return true;
+            });
+        addCheck('no plaintext persona files next to persona.sealed',
+            leftovers.length === 0, 'plaintext: ' + leftovers.slice(0, 8).join(', '));
+        addNote('the persona is encrypted; the first boot asks for its passphrase');
+    } else if (common.isFile(ymlPath)) {
         const yml = common.readTextFile(ymlPath);
         addCheck('persona/persona.yml contains system_prompt:',
             /(?:^|\n)\s*system_prompt\s*:/.test(yml), 'system_prompt: key not found');
     } else {
-        addCheck('persona/persona.yml contains system_prompt:', false, 'file missing');
+        addCheck('persona/persona.yml or persona/persona.sealed exists', false, 'both are missing');
     }
 
     // ------------------------------------------------------------------

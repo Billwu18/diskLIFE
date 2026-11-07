@@ -14,6 +14,8 @@ $script:DPErrorCodes = [ordered]@{
     E08 = 'persona file cannot be parsed'
     E09 = 'startup timed out'
     E10 = 'already running'
+    E11 = 'sealed persona cannot be unlocked'
+    E12 = 'wrong passphrase or damaged sealed persona'
 }
 
 # Runtime state (set by launch.ps1)

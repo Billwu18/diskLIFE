@@ -605,19 +605,21 @@ function toolsScript(name) {
   return path.join(WORKSPACE_ROOT, 'tools', name);
 }
 
-function runNodeTool(script, args) {
+function runNodeTool(script, args, options) {
   if (!fs.existsSync(script)) {
     return {
       exitCode: -1,
       output: '找不到 ' + path.relative(WORKSPACE_ROOT, script) + '（Linux 移植版工具还没生成？）',
     };
   }
-  const r = spawnSync(process.execPath, [script].concat(args), {
+  const spawnOptions = {
     cwd: WORKSPACE_ROOT,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
     windowsHide: true,
-  });
+  };
+  if (options && typeof options.input === 'string') spawnOptions.input = options.input;
+  const r = spawnSync(process.execPath, [script].concat(args), spawnOptions);
   const outParts = [];
   if (r.stdout) outParts.push(String(r.stdout));
   if (r.stderr) outParts.push(String(r.stderr));
@@ -1066,7 +1068,17 @@ async function handleApi(req, res, method, requestPath, parsed) {
     const toolArgs = ['--persona', personaDir, '--out', outDir, '--payload-preset', preset];
     if (body.reusePad) toolArgs.push('--reuse-pad');
     if (body.force) toolArgs.push('--force');
-    const r = runNodeTool(script, toolArgs);
+    const wantSeal = body.seal === true;
+    const sealPassphrase = body.sealPassphrase === undefined || body.sealPassphrase === null
+      ? '' : String(body.sealPassphrase);
+    if (wantSeal) {
+      if (sealPassphrase.length < 8) {
+        sendFail(res, '加密人设的口令至少 8 位。', 'S24');
+        return;
+      }
+      toolArgs.push('--seal-persona', '--passphrase-stdin');
+    }
+    const r = runNodeTool(script, toolArgs, wantSeal ? { input: sealPassphrase + '\n' } : undefined);
     let discID = '';
     const m = /DISC_OK\s+discID=([0-9a-f]+)/.exec(r.output);
     if (m) discID = m[1];
@@ -1089,6 +1101,7 @@ async function handleApi(req, res, method, requestPath, parsed) {
       outDir,
       output: r.output,
       payloadPreset: preset,
+      sealed: wantSeal,
       testOk,
       testOutput: testOut,
     });
